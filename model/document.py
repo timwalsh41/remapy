@@ -221,7 +221,8 @@ class Document(Item):
         with zipfile.ZipFile(self.path_zip, "r") as zip_ref:
             zip_ref.extractall(path)
 
-        os.remove(self.path_zip)
+        # TODO: enable this to remove zip file after download
+        # os.remove(self.path_zip)
 
         # Update state
         self._update_state(inform_listener=False)

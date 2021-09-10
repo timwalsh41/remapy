@@ -176,5 +176,9 @@ class Item(object):
             return 
 
         Path(self.path_remapy).mkdir(parents=True, exist_ok=True)
+        self._write_metadata()
+
+
+    def _write_metadata(self):
         with open(self.path_metadata_local, "w") as out:
             out.write(json.dumps(self.metadata, indent=4))

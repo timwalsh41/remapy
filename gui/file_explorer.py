@@ -108,6 +108,7 @@ class FileExplorer(object):
         self.context_menu.add_command(label='Restore', command=self.btn_restore_item_click)
         self.context_menu.add_separator()
         self.context_menu.add_command(label='Paste', accelerator="Ctrl+V", command=self.btn_paste_async_click)
+        self.context_menu.add_command(label='EXPERIMENTAL: Edit file', command=self.btn_test_modification)
 
         self.tree.bind("<Double-1>", self.tree_double_click)
 
@@ -799,3 +800,23 @@ class FileExplorer(object):
             for item in items:
                 item.set_bookmarked(not item.bookmarked())
         threading.Thread(target=run).start()
+
+    def btn_test_modification(self):
+        selected_ids = self.tree.selection()
+
+        id = selected_ids[0]
+        self.log_console('Selected {}'.format(id))
+
+        item = self.item_manager.get_item(id)
+        print('rm file path = {}'.format(item.path_rm_files))
+
+        parent_id = str(item.parent().id() if item.is_document() else item.id())
+
+        # Upload
+        #item = self.item_manager.upload_file(
+        #    id, parent_id, name,
+        #    filetype, data,
+        #    self._update_tree_item)
+        #self.log_console("Successfully uploaded %s" % item.full_name())
+
+        pass
