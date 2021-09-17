@@ -1,9 +1,9 @@
-import lines
+from experimental import lines
 import matplotlib.pyplot as plt
 import numpy as np
-import fonts
+from experimental import fonts
 import model.item_manager
-import synchronizer
+from experimental import synchronizer
 
 # Script configuration options
 

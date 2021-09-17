@@ -1,20 +1,15 @@
 import tkinter
 import tkinter.ttk as ttk
-import lines
-import text_upload_sync
+from experimental import lines
+from experimental import text_upload_sync
 import model
+import os
+import glob
 
 # Next steps
 # - Write code to build zip file in text_upload_sync.py
 #
 # Note that you can access the x/y location of a placed label with lbl.place_info()
-
-file_path = '/home/tim/.remapy/data/0e6ceff0-3137-4dcc-8672-ee63c32621e1/0e6ceff0-3137-4dcc-8672-ee63c32621e1/'
-rm_file = file_path + '0.rm'
-
-rm_parser = lines.LineParser(rm_file)
-rm_parser.read_rm_file()
-page = rm_parser.parse_rm_data()
 
 # state tracker for temporary text box for text entry
 TEXT_NONE = 0
@@ -42,8 +37,20 @@ class TextEntry:
 
 
 class RemarkableEditor:
+    def __init__(self, path=None, page=0):
+        if not os.path.exists(path):
+            raise Exception('Path {} not found'.format(path))
 
-    def __init__(self):
+        self.path = path
+
+        # get remarkable page files in path
+        page_files = glob.glob(os.path.join(self.path, '*.rm'))
+        self.num_pages = len(page_files)
+
+        self.page_number = page
+
+        self.rm_parser = lines.LineParser()
+
         # state for text editing state machine
         self.text_status = TEXT_NONE
 
@@ -72,35 +79,73 @@ class RemarkableEditor:
 
     def create_window(self):
         self.top = tkinter.Tk()
-        self.top.title('remapy')
-        self.canvas = tkinter.Canvas(self.top, bg="white", height=lines.REMARKABLE_DISPLAY_MAX_Y,
-                                width=lines.REMARKABLE_DISPLAY_MAX_X)
+        self.top.title('remapy editor')
+        self.frame = tkinter.Frame(self.top, width=lines.REMARKABLE_DISPLAY_MAX_X + 100,
+                                   height=0.6*lines.REMARKABLE_DISPLAY_MAX_Y)
+        self.frame.pack(expand=True, fill=tkinter.BOTH)
+        self.canvas = tkinter.Canvas(self.frame, bg="white", height=0.6*lines.REMARKABLE_DISPLAY_MAX_Y,
+                                width=lines.REMARKABLE_DISPLAY_MAX_X,
+                                scrollregion=[0,0,lines.REMARKABLE_DISPLAY_MAX_X, lines.REMARKABLE_DISPLAY_MAX_Y])
+        self.vbar = tkinter.Scrollbar(self.frame, orient=tkinter.VERTICAL)
+        self.vbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
+        self.vbar.config(command=self.canvas.yview)
+        self.canvas.config(yscrollcommand=self.vbar.set)
 
         # bind the single click, release, and drag events to manage text box creation and deletion
         self.canvas.bind('<Button-1>', self.left_click)
         self.canvas.bind('<ButtonRelease-1>', self.release_click)
         self.canvas.bind('<B1-Motion>', self.click_drag)
+        # Windows & OSX
+        # self.canvas.bind_all('<MouseWheel>', self.on_mousewheel)
+        # X11
+        self.canvas.bind_all('<Button-4>', self.on_mousewheel)  # scroll up
+        self.canvas.bind_all('<Button-5>', self.on_mousewheel)  # scroll down
 
+        self.last_button = ttk.Button(self.top, text='<<', command=self.last_page)
+        self.next_button = ttk.Button(self.top, text='>>', command=self.next_page)
+        self.page_label = ttk.Label(text='')
         self.debug_button = ttk.Button(self.top, text='Debug', command=self.debug)
         self.save_button = ttk.Button(self.top, text='Save', command=self.write_output)
 
-        self.draw_remarkable_contents()
-        self.canvas.pack()
-        self.debug_button.place(x=10,y=10)
-        self.save_button.place(x=100,y=10)
+        self.draw_remarkable_page()
+        self.canvas.pack(side=tkinter.LEFT,expand=True,fill=tkinter.BOTH)
+        self.last_button.pack(side=tkinter.LEFT)
+        self.page_label.pack(side=tkinter.LEFT)
+        self.next_button.pack(side=tkinter.LEFT)
+        self.save_button.pack(side=tkinter.LEFT)
+        self.debug_button.pack(side=tkinter.LEFT)
+
+        self.update_page_label()
+
+        # self.debug_button.place(x=10,y=10)
+        # self.save_button.place(x=100,y=10)
 
 
-    def draw_remarkable_contents(self):
+    def draw_remarkable_page(self):
+        page_path = os.path.join(self.path, '{}.rm'.format(self.page_number))
+        if not os.path.exists(page_path):
+            raise Exception('Page path {} not found')
+
+        self.rm_parser.set_file_path(page_path)
+        self.rm_parser.read_rm_file()
+        self.page = self.rm_parser.parse_rm_data()
+
         # draw page contents
         if self.canvas is not None:
-            for layer in page.get_layers():
+            self.clear_canvas()
+            for layer in self.page.get_layers():
                 for line in layer.get_lines():
                     if line._pen_nr != lines.Pen.ERASER:
                         x, y = line.get_point_coordinates_as_list()
                         xy_list = [item for pair in zip(x, y) for item in pair]
                         self.canvas.create_line(*xy_list, width=line.get_points()[0].width*1.25)
         else:
-            print('Unable to draw remarkable contents, call create_windw() first')
+            print('Unable to draw remarkable contents, call create_window() first')
+
+
+    def clear_canvas(self):
+        if self.canvas is not None:
+            self.canvas.delete('all')
 
 
     def start_main_loop(self):
@@ -129,7 +174,6 @@ class RemarkableEditor:
             # click event outside of text box, reset state
             self.text_status = TEXT_NONE
             self.save_text()
-
 
 
     def save_text(self):
@@ -215,6 +259,22 @@ class RemarkableEditor:
             event.widget.destroy()
 
 
+    def on_mousewheel(self, event):
+        # mousewheel event - windows & OSX (for OSX, remove the 120 scale factor)
+        # self.canvas.yview_scroll(-1 * int(event.delta / 120), "units")
+
+        # X11 - we have mouse button 4 and 5
+        if event.num == 4:
+            # scroll up
+            direction = -1
+        elif event.num == 5:
+            # scroll down
+            direction = 1
+
+        self.canvas.yview_scroll(direction, 'units')
+
+
+
     def write_output(self):
         if len(self.text_list) > 0:
             print('Adding string')
@@ -245,8 +305,34 @@ class RemarkableEditor:
         print('Entering debug mode')
 
 
+    def next_page(self):
+        if self.page_number < (self.num_pages - 1):
+            self.page_number += 1
+            self.draw_remarkable_page()
+            self.update_page_label()
+
+
+    def last_page(self):
+        if self.page_number > 0:
+            self.page_number -= 1
+            self.draw_remarkable_page()
+            self.update_page_label()
+
+
+    def update_page_label(self):
+        self.page_label.config(text='    Page {}/{}    '.format(self.page_number + 1, self.num_pages))
+
+
 if __name__ == '__main__':
-    rema = RemarkableEditor()
+    # August '21 to-do
+    id = '4fea4460-0c02-466d-a31e-63f2eeb1a087'
+
+    # Remarkable test
+    # id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
+
+    file_path = '/home/tim/.remapy/data/{}/{}/'.format(id, id)
+
+    rema = RemarkableEditor(file_path, page=0)
     rema.create_window()
-    rema.draw_remarkable_contents()
+    rema.draw_remarkable_page()
     rema.start_main_loop()

@@ -3,7 +3,7 @@ import freetype
 import numpy as np
 import os
 from utils.helper import Singleton
-from lines import Line, Point, Pen
+from experimental.lines import Line, Point, Pen
 
 # number of straight line segments to use in approximation of bezier curves
 BEZIER_INDEX = 8
