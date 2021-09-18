@@ -71,8 +71,14 @@ class RemarkableEditor:
         # textbox dimensions
         self.text_size = [0,0]
 
-        # storage for added labels
-        self.text_list = []
+        # storage for added text - create an empty list for each page
+        self.text_list = [[] for p in range(self.num_pages)]
+
+        # storage for added label objects - create an empty list for each page
+        self.labels = [[] for p in range(self.num_pages)]
+
+        # flag for existence of unsaved changes in the page
+        self.unsaved_changes = False
 
         return
 
@@ -132,20 +138,37 @@ class RemarkableEditor:
 
         # draw page contents
         if self.canvas is not None:
-            self.clear_canvas()
+            # draw remarkable line content
             for layer in self.page.get_layers():
                 for line in layer.get_lines():
                     if line._pen_nr != lines.Pen.ERASER:
                         x, y = line.get_point_coordinates_as_list()
                         xy_list = [item for pair in zip(x, y) for item in pair]
                         self.canvas.create_line(*xy_list, width=line.get_points()[0].width*1.25)
+
+            # add in any previously created text labels
+            for txt in self.text_list[self.page_number]:
+                # load in class variables used to create the label
+                self.text_size[0] = txt.width
+                self.start_coords[0] = txt.x
+                self.start_coords[1] = txt.y
+
+                # now draw the label and add it to self.labels
+                self.create_label(txt.text)
         else:
             print('Unable to draw remarkable contents, call create_window() first')
 
 
     def clear_canvas(self):
         if self.canvas is not None:
+            # delete all lines on canvas
             self.canvas.delete('all')
+
+            # delete any labels that have been created
+
+            while len(self.labels[self.page_number]) > 0:
+                self.labels[self.page_number][0].destroy()
+                self.labels[self.page_number].pop(0)
 
 
     def start_main_loop(self):
@@ -181,13 +204,10 @@ class RemarkableEditor:
 
         if len(new_string.strip()) > 0:
             # create a new label with the text
-            lbl = ttk.Label(self.top, text=new_string, width=self.text_size[0], font=TEXTBOX_FONT,
-                            wraplength=self.text_size[0]*TEXTBOX_WIDTH_DIVISOR, background="white")
-            lbl.bind('<Button-3>', self.right_click)
-            lbl.place(x=self.start_coords[0], y=self.start_coords[1])
+            self.create_label(new_string)
 
             # store the text for later addition to rm notebook
-            self.text_list.append(TextEntry(x=self.start_coords[0], y=self.start_coords[1],
+            self.text_list[self.page_number].append(TextEntry(x=self.start_coords[0], y=self.start_coords[1],
                                             width=self.text_size[0], text=new_string))
 
         # destroy text box
@@ -195,7 +215,12 @@ class RemarkableEditor:
         self.text_box = None
 
 
-        # print('{} ({},{})'.format(text_status, event.x, event.y))
+    def create_label(self, new_string):
+        lbl = ttk.Label(self.top, text=new_string, width=self.text_size[0], font=TEXTBOX_FONT,
+                        wraplength=self.text_size[0] * TEXTBOX_WIDTH_DIVISOR, background="white")
+        lbl.bind('<Button-3>', self.right_click)
+        lbl.place(x=self.start_coords[0], y=self.start_coords[1])
+        self.labels[self.page_number].append(lbl)
 
 
     def click_drag(self, event):
@@ -254,9 +279,17 @@ class RemarkableEditor:
     def right_click(self, event):
         # if we clicked on a label then delete it
         if isinstance(event.widget, ttk.Label):
-            if event.widget in self.labels:
-                self.labels.remove(event.widget)
-            event.widget.destroy()
+            if event.widget in self.labels[self.page_number]:
+                # get index of label that was clicked
+                idx = [i for i in range(len(self.labels[self.page_number]))
+                       if self.labels[self.page_number][i] == event.widget][0]
+
+                # remove the entries from the text list and the list of labels
+                self.text_list[self.page_number].pop(idx)
+                self.labels[self.page_number].remove(event.widget)
+
+                # destroy the label
+                event.widget.destroy()
 
 
     def on_mousewheel(self, event):
@@ -276,13 +309,28 @@ class RemarkableEditor:
 
 
     def write_output(self):
+        for page in range(self.num_pages):
+            if len(self.text_list[page]) > 0:
+                # get path to page file
+                page_path = os.path.join(self.path, '{}.rm'.format(self.page_number))
+                if not os.path.exists(page_path):
+                    raise Exception('Page path {} not found')
+
+                # add our new text to the page file
+                text_upload_sync.add_strings_to_page(self.text_list[page], page_path)
+
+
+        # re-draw current page so that text we added becomes remarkable objects rather than tkinter
+        # labels
+        self.clear_canvas()
+        self.draw_remarkable_page()
+
+        # OLD FUNCTION CONTENT
         if len(self.text_list) > 0:
-            print('Adding string')
             for str in self.text_list:
                 # add text to local rm file
                 text_upload_sync.add_string(str.text, str.x, str.y, str.width*TEXTBOX_WIDTH_DIVISOR)
 
-            print('Open item manager')
             im = model.item_manager.ItemManager()
 
             # connect to RM server
@@ -307,6 +355,7 @@ class RemarkableEditor:
 
     def next_page(self):
         if self.page_number < (self.num_pages - 1):
+            self.clear_canvas()
             self.page_number += 1
             self.draw_remarkable_page()
             self.update_page_label()
@@ -314,6 +363,7 @@ class RemarkableEditor:
 
     def last_page(self):
         if self.page_number > 0:
+            self.clear_canvas()
             self.page_number -= 1
             self.draw_remarkable_page()
             self.update_page_label()

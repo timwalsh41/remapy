@@ -22,6 +22,9 @@ vector_font_file = 'znikoslsvginot-font/Znikoslsvginot8-GOB3y.ttf'
 # temporary value to advance in y-direction on new line
 Y_ADVANCE = 24
 
+# scale factor for font character to remarkable line object
+SCALE = 0.008
+
 # x-y coordinates to add a line to the page, just make these empty lists to skip
 line_y = [300, 250, 300]
 line_x = [700, 850, 1000]
@@ -33,7 +36,7 @@ character_y = 450
 
 
 # Support functions
-def add_string(str, x, y, width):
+def add_string(page, font, str, x, y, width):
     if len(str) == 0:
         return
 
@@ -42,18 +45,6 @@ def add_string(str, x, y, width):
 
     max_x = min(x + width, lines.REMARKABLE_DISPLAY_MAX_X)
 
-    # open a LineParser for the target rm file
-    full_rm_path = local_remapy_item_path + rm_file
-    rm_parser = lines.LineParser(full_rm_path)
-    rm_parser.read_rm_file()
-    page = rm_parser.parse_rm_data()
-
-    # open up our font
-    f = fonts.rm_font()
-    f.load_vector_alphabet(vector_font_file)
-
-    scale = 0.008
-
     words = str.split(' ')
     for word in words:
         # check width of the current word
@@ -61,8 +52,8 @@ def add_string(str, x, y, width):
         break_word = False
 
         for char in word:
-            f.face.load_char(char)
-            word_width += f.face.glyph.advance.x * scale
+            font.face.load_char(char)
+            word_width += font.face.glyph.advance.x * SCALE
 
         if word_width > width:
             # word does not fit on a full line, so we'll need to break it up across
@@ -73,7 +64,7 @@ def add_string(str, x, y, width):
             # add a line feed and carriage return by resetting the x offset and advancing the y offset
             offset_x = x
             # TODO: Figure out y-advance from glyph/face
-            # offset_y += f.face.glyph.advance.y * scale
+            # offset_y += font.face.glyph.advance.y * scale
             offset_y += Y_ADVANCE
 
         # now add each character individually
@@ -82,35 +73,50 @@ def add_string(str, x, y, width):
                 # line feed and carriage return
                 offset_x = x
                 # TODO: update y-advance code
-                # offset_y += f.face.glyph.advance.y * scale
+                # offset_y += font.face.glyph.advance.y * scale
                 offset_y += Y_ADVANCE
             else:
                 print('{}: {}'.format(offset_x, char))
-                f.face.load_char(char)
-                if break_word and (offset_x + f.face.glyph.advance.x * scale) > max_x:
+                font.face.load_char(char)
+                if break_word and (offset_x + font.face.glyph.advance.x * SCALE) > max_x:
                     # line feed and carriage return
                     offset_x = x
                     # TODO: update y-advance code
-                    # offset_y += f.face.glyph.advance.y * scale
+                    # offset_y += font.face.glyph.advance.y * scale
                     offset_y += Y_ADVANCE
-                add_character(page, f, char, offset_x, offset_y, scale, -1 * scale)
+                add_character(page, font, char, offset_x, offset_y, SCALE, -1 * SCALE)
 
                 # advance the cursor (note that the font object holds the previous loaded character in memory,
                 # so we're advancing the appropriate amount
-                offset_x += f.face.glyph.advance.x * scale
+                offset_x += font.face.glyph.advance.x * SCALE
 
         # add a space at the end of the word
-        f.face.load_char(' ')
-        if (offset_x + f.face.glyph.advance.x * scale) > max_x:
+        font.face.load_char(' ')
+        if (offset_x + font.face.glyph.advance.x * SCALE) > max_x:
             # line feed and carriage return
             offset_x = x
-            offset_y += f.face.glyph.advance.y * scale
+            offset_y += font.face.glyph.advance.y * SCALE
         else:
             # advance the width of a space
-            offset_x += f.face.glyph.advance.x * scale
+            offset_x += font.face.glyph.advance.x * SCALE
+
+
+def add_strings_to_page(text_list, page_path):
+    # load remarkable page data
+    rm_parser = lines.LineParser(page_path)
+    rm_parser.read_rm_file()
+    page = rm_parser.parse_rm_data()
+
+    # open up our font
+    f = fonts.rm_font()
+    f.load_vector_alphabet(vector_font_file)
+
+    # now add strings one by one to the page
+    for txt in text_list:
+        add_string(page, f, txt.text, txt.x, txt.y, txt.width)
 
     # now write the output back out
-    page.write_output_file(full_rm_path)
+    page.write_output_file(page_path)
 
 
 def add_character(page, font, char, x, y, xscale, yscale):
