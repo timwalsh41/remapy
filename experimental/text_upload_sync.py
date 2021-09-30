@@ -4,14 +4,19 @@ import numpy as np
 from experimental import fonts
 import model.item_manager
 from experimental import synchronizer
+import os
+from zipfile import ZipFile
+import zipfile
+from io import BytesIO
+import json
 
 # Script configuration options
 
 # remapy ID of the document we'll modify
-id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
+test_id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
 
 # path to local version of file for modification
-local_remapy_item_path = '/home/tim/.remapy/data/' + id + '/' + id + '/'
+local_remapy_item_path = '/home/tim/.remapy/data/' + test_id + '/' + test_id + '/'
 rm_file = '0.rm'
 
 # true-type font file to use for characters
@@ -20,7 +25,14 @@ font_file = '/usr/share/fonts/truetype/freefont/FreeSans.ttf'
 vector_font_file = 'znikoslsvginot-font/Znikoslsvginot8-GOB3y.ttf'
 
 # temporary value to advance in y-direction on new line
+# TODO: update this with a proper value based on font size
 Y_ADVANCE = 24
+
+# empirically determined constants to convert size in pixels to
+# size in characters for creating text box
+# TODO: Update this with a proper constant based on font size
+TEXTBOX_WIDTH_DIVISOR = 15
+TEXTBOX_HEIGHT_DIVISOR = 29
 
 # scale factor for font character to remarkable line object
 SCALE = 0.008
@@ -39,6 +51,8 @@ character_y = 450
 def add_string(page, font, str, x, y, width):
     if len(str) == 0:
         return
+
+    width *= TEXTBOX_WIDTH_DIVISOR
 
     offset_x = x
     offset_y = y
@@ -76,7 +90,7 @@ def add_string(page, font, str, x, y, width):
                 # offset_y += font.face.glyph.advance.y * scale
                 offset_y += Y_ADVANCE
             else:
-                print('{}: {}'.format(offset_x, char))
+                # print('{}: {}'.format(offset_x, char))
                 font.face.load_char(char)
                 if break_word and (offset_x + font.face.glyph.advance.x * SCALE) > max_x:
                     # line feed and carriage return
@@ -191,6 +205,54 @@ def read_zip_file(id, root_folder):
     return data
 
 
+def build_zip_file(id, root_folder):
+    mf = BytesIO()
+    mf.seek(0)
+
+    # open up the content file
+    with open(os.path.join(root_folder, id + '.content')) as content_file:
+        content_data = json.load(content_file)
+
+    # extract the page ids
+    page_list = content_data['pages']
+
+    with ZipFile(mf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, directories, files in os.walk(root_folder):
+            if id + '/.remapy' in root:
+                continue
+            for filename in files:
+                # join the two strings in order to form the full filepath.
+                filepath = os.path.join(root, filename)
+
+                if '-metadata.json' in filepath:
+                    # extract the page numer/index from the page filename
+                    page_index = int(filename.split('.')[0].split('-')[0])
+
+                    # for .rm page files and page metadata files, copy the file
+                    # into a temporary object so that we can create a custom name
+                    # that matches the ReMarkable format
+                    with open(filepath, 'r') as file_obj:
+                        # zf.writestr('{}/{}-metadata.json'.format(id, page_list[page_index]), file_obj.read())
+                        zf.writestr('{}/{}-metadata.json'.format(id, page_index), file_obj.read())
+                elif '.rm' in filepath:
+                    # extract the page number/index from the page filename
+                    page_index = int(filename.split('.')[0])
+
+                    # for .rm page files and page metadata files, copy the file
+                    # into a temporary object so that we can create a custom name
+                    # that matches the ReMarkable format
+                    with open(filepath, 'rb') as file_obj:
+                        # zf.writestr('{}/{}.rm'.format(id, page_list[page_index]), file_obj.read())
+                        zf.writestr('{}/{}.rm'.format(id, page_index), file_obj.read())
+                else:
+                    # standard file - just add directly to the zip
+                    with open(filepath, 'r') as file_obj:
+                        zf.writestr(filename, file_obj.read())
+
+    mf.seek(0)
+    return mf
+
+
 def upload_request(im, id, metadata):
     response = im.rm_client._request("PUT", "/document-storage/json/2/upload/request",
                              body=[{
@@ -202,7 +264,7 @@ def upload_request(im, id, metadata):
     return response
 
 
-def upload(im):
+def upload(im, id):
     item = im.get_item(id=id)
 
     # update document version in metadata
@@ -213,7 +275,7 @@ def upload(im):
     item._write_metadata()
 
     # build zip file
-    mf = read_zip_file(id, item.path)
+    mf = build_zip_file(id, item.path)
 
     if mf is not None:
         response = upload_request(im, id, item.metadata)

@@ -75,7 +75,7 @@ class RemarkableEditor:
         self.text_list = [[] for p in range(self.num_pages)]
 
         # storage for added label objects - create an empty list for each page
-        self.labels = [[] for p in range(self.num_pages)]
+        self.labels = []
 
         # flag for existence of unsaved changes in the page
         self.unsaved_changes = False
@@ -165,10 +165,9 @@ class RemarkableEditor:
             self.canvas.delete('all')
 
             # delete any labels that have been created
-
-            while len(self.labels[self.page_number]) > 0:
-                self.labels[self.page_number][0].destroy()
-                self.labels[self.page_number].pop(0)
+            while len(self.labels) > 0:
+                self.labels[0].destroy()
+                self.labels.pop(0)
 
 
     def start_main_loop(self):
@@ -210,6 +209,8 @@ class RemarkableEditor:
             self.text_list[self.page_number].append(TextEntry(x=self.start_coords[0], y=self.start_coords[1],
                                             width=self.text_size[0], text=new_string))
 
+            self.unsaved_changes = True
+
         # destroy text box
         self.text_box.destroy()
         self.text_box = None
@@ -220,7 +221,7 @@ class RemarkableEditor:
                         wraplength=self.text_size[0] * TEXTBOX_WIDTH_DIVISOR, background="white")
         lbl.bind('<Button-3>', self.right_click)
         lbl.place(x=self.start_coords[0], y=self.start_coords[1])
-        self.labels[self.page_number].append(lbl)
+        self.labels.append(lbl)
 
 
     def click_drag(self, event):
@@ -279,14 +280,14 @@ class RemarkableEditor:
     def right_click(self, event):
         # if we clicked on a label then delete it
         if isinstance(event.widget, ttk.Label):
-            if event.widget in self.labels[self.page_number]:
+            if event.widget in self.labels:
                 # get index of label that was clicked
-                idx = [i for i in range(len(self.labels[self.page_number]))
-                       if self.labels[self.page_number][i] == event.widget][0]
+                idx = [i for i in range(len(self.labels))
+                       if self.labels[i] == event.widget][0]
 
                 # remove the entries from the text list and the list of labels
                 self.text_list[self.page_number].pop(idx)
-                self.labels[self.page_number].remove(event.widget)
+                self.labels.remove(event.widget)
 
                 # destroy the label
                 event.widget.destroy()
@@ -307,46 +308,42 @@ class RemarkableEditor:
         self.canvas.yview_scroll(direction, 'units')
 
 
-
     def write_output(self):
-        for page in range(self.num_pages):
-            if len(self.text_list[page]) > 0:
-                # get path to page file
-                page_path = os.path.join(self.path, '{}.rm'.format(self.page_number))
-                if not os.path.exists(page_path):
-                    raise Exception('Page path {} not found')
+        if self.unsaved_changes:
+            for page in range(self.num_pages):
+                if len(self.text_list[page]) > 0:
+                    # get path to page file
+                    page_path = os.path.join(self.path, '{}.rm'.format(self.page_number))
+                    if not os.path.exists(page_path):
+                        raise Exception('Page path {} not found')
 
-                # add our new text to the page file
-                text_upload_sync.add_strings_to_page(self.text_list[page], page_path)
+                    # add our new text to the page file
+                    text_upload_sync.add_strings_to_page(self.text_list[page], page_path)
 
+            # re-draw current page so that text we added becomes remarkable objects rather than tkinter
+            # labels
+            self.clear_canvas()
 
-        # re-draw current page so that text we added becomes remarkable objects rather than tkinter
-        # labels
-        self.clear_canvas()
-        self.draw_remarkable_page()
+            # clear local list of text labels
+            self.text_list = [[] for p in range(self.num_pages)]
 
-        # OLD FUNCTION CONTENT
-        if len(self.text_list) > 0:
-            for str in self.text_list:
-                # add text to local rm file
-                text_upload_sync.add_string(str.text, str.x, str.y, str.width*TEXTBOX_WIDTH_DIVISOR)
+            # now redraw the page
+            self.draw_remarkable_page()
 
             im = model.item_manager.ItemManager()
 
             # connect to RM server
-            print('Signing in')
             im.rm_client.sign_in()
 
             # upload to server
             print('Upload to server')
-            text_upload_sync.upload(im)
+            text_upload_sync.upload(im, id)
 
             # sync with local remarkable
-            print('Sync to local')
-            text_upload_sync.sync(im)
+            # print('Sync to local')
+            # text_upload_sync.sync(im)
 
-            # clear local list
-            self.text_list = []
+            self.unsaved_changes = False
 
 
     def debug(self):
@@ -375,10 +372,10 @@ class RemarkableEditor:
 
 if __name__ == '__main__':
     # August '21 to-do
-    id = '4fea4460-0c02-466d-a31e-63f2eeb1a087'
+    # id = '4fea4460-0c02-466d-a31e-63f2eeb1a087'
 
     # Remarkable test
-    # id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
+    id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
 
     file_path = '/home/tim/.remapy/data/{}/{}/'.format(id, id)
 
