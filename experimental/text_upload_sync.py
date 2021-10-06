@@ -214,7 +214,7 @@ def build_zip_file(id, root_folder):
         content_data = json.load(content_file)
 
     # extract the page ids
-    page_list = content_data['pages']
+    # page_list = content_data['pages']
 
     with ZipFile(mf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
         for root, directories, files in os.walk(root_folder):

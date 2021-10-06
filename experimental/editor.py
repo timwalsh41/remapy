@@ -26,6 +26,9 @@ MIN_TEXTBOX_Y = 10
 TEXTBOX_WIDTH_DIVISOR = 15
 TEXTBOX_HEIGHT_DIVISOR = 29
 
+# vertical portion of canvas that will be displayed at any given time (the rest is scrollable)
+CANVAS_SCROLL_Y_FRACTION = 0.6
+
 TEXTBOX_FONT = 'calibri 18'
 
 class TextEntry:
@@ -87,15 +90,16 @@ class RemarkableEditor:
         self.top = tkinter.Tk()
         self.top.title('remapy editor')
         self.frame = tkinter.Frame(self.top, width=lines.REMARKABLE_DISPLAY_MAX_X + 100,
-                                   height=0.6*lines.REMARKABLE_DISPLAY_MAX_Y)
+                                   height=CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y)
         self.frame.pack(expand=True, fill=tkinter.BOTH)
-        self.canvas = tkinter.Canvas(self.frame, bg="white", height=0.6*lines.REMARKABLE_DISPLAY_MAX_Y,
+        self.canvas = tkinter.Canvas(self.frame, bg="white", height=CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y,
                                 width=lines.REMARKABLE_DISPLAY_MAX_X,
                                 scrollregion=[0,0,lines.REMARKABLE_DISPLAY_MAX_X, lines.REMARKABLE_DISPLAY_MAX_Y])
         self.vbar = tkinter.Scrollbar(self.frame, orient=tkinter.VERTICAL)
         self.vbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
         self.vbar.config(command=self.canvas.yview)
-        self.canvas.config(yscrollcommand=self.vbar.set)
+        # self.canvas.config(yscrollcommand=self.vbar.set)
+        self.canvas.config(yscrollcommand=self.on_scroll)
 
         # bind the single click, release, and drag events to manage text box creation and deletion
         self.canvas.bind('<Button-1>', self.left_click)
@@ -188,8 +192,11 @@ class RemarkableEditor:
             # click event may be the start of a drag event to create a textbox
             self.text_status = TEXT_START
 
+            # get the y-offset from the vertical scrollbar position
+            vbar_offset = self.vbar.get()[0]
+
             # record the start position
-            self.start_coords = [event.x, event.y]
+            self.start_coords = [event.x, event.y + vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y]
 
             # print('{} ({},{})'.format(text_status, event.x, event.y))
         elif self.text_status == TEXT_ACTIVE:
@@ -217,26 +224,35 @@ class RemarkableEditor:
 
 
     def create_label(self, new_string):
+        # get the y-offset from the vertical scrollbar position
+        vbar_offset = self.vbar.get()[0]
+
+        # compute adjusted y position to display correctly on scrolled canvas
+        y_adjusted = self.start_coords[1] - vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y
+
         lbl = ttk.Label(self.top, text=new_string, width=self.text_size[0], font=TEXTBOX_FONT,
                         wraplength=self.text_size[0] * TEXTBOX_WIDTH_DIVISOR, background="white")
         lbl.bind('<Button-3>', self.right_click)
-        lbl.place(x=self.start_coords[0], y=self.start_coords[1])
+        lbl.place(x=self.start_coords[0], y=y_adjusted)
         self.labels.append(lbl)
 
 
     def click_drag(self, event):
         # print('drag x = {}; y = {}'.format(event.x, event.y))
 
+        # get the y-offset from the vertical scrollbar position
+        vbar_offset = self.vbar.get()[0]
+
         if self.text_status == TEXT_START:
             # starting to drag
             self.text_status = TEXT_DRAGGING
-            self.draw_rectangle((event.x, event.y))
+            self.draw_rectangle((event.x, event.y + vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y))
 
             # print('{} ({},{})'.format(text_status, event.x, event.y))
         elif self.text_status == TEXT_DRAGGING:
             # continuing drag, update rectangle
             self.canvas.delete(self.outline_box)
-            self.draw_rectangle((event.x, event.y))
+            self.draw_rectangle((event.x, event.y + vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y))
 
             # print('{} ({},{})'.format(text_status, event.x, event.y))
 
@@ -256,17 +272,22 @@ class RemarkableEditor:
                 # valid textbox size - create textbox
                 self.text_status = TEXT_ACTIVE
 
+                # get the y-offset from the vertical scrollbar position
+                vbar_offset = self.vbar.get()[0]
+
+                event_y_adjusted = event.y + vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y
+
                 self.text_size[0] = int(abs(self.start_coords[0] - event.x) / TEXTBOX_WIDTH_DIVISOR)
-                self.text_size[1] = int(abs(self.start_coords[1] - event.y) / TEXTBOX_HEIGHT_DIVISOR)
+                self.text_size[1] = int(abs(self.start_coords[1] - event_y_adjusted) / TEXTBOX_HEIGHT_DIVISOR)
 
                 self.start_coords[0] = min(self.start_coords[0], event.x)
-                self.start_coords[1] = min(self.start_coords[1], event.y)
+                self.start_coords[1] = min(self.start_coords[1], event_y_adjusted)
 
                 # print('({},{}); ({},{})'.format(*self.start_coords, *self.text_size))
 
                 # create text box and grab focus
                 self.text_box = tkinter.Text(self.top, height=self.text_size[1], width=self.text_size[0], font=TEXTBOX_FONT)
-                self.text_box.place(x=self.start_coords[0], y=self.start_coords[1])
+                self.text_box.place(x=self.start_coords[0], y=self.start_coords[1] - vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y)
                 self.text_box.focus_set()
             else:
                 # textbox too small
@@ -306,6 +327,24 @@ class RemarkableEditor:
             direction = 1
 
         self.canvas.yview_scroll(direction, 'units')
+
+
+    def on_scroll(self, top, bottom):
+        # top = position of top of scroll bar
+        # bottom = position of bottom of scroll bar
+        # range is 0-1
+        self.vbar.set(top, bottom)
+
+        # update location of existing text labels
+        for idx, lbl in enumerate(self.labels):
+            y_adjusted = self.text_list[self.page_number][idx].y - float(top) * lines.REMARKABLE_DISPLAY_MAX_Y
+            if y_adjusted > 0 and y_adjusted < CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y:
+                lbl.place(x=self.text_list[self.page_number][idx].x, y=y_adjusted)
+                # lbl.visible = True
+            else:
+                # place label off-window
+                # lbl.visible = False
+                lbl.place_forget()
 
 
     def write_output(self):
