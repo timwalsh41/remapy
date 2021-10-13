@@ -264,15 +264,19 @@ def upload_request(im, id, metadata):
     return response
 
 
-def upload(im, id):
+def increment_version_number(im, id):
+    # increment the version number in the local item catalog and our local copy of the tree
     item = im.get_item(id=id)
 
-    # update document version in metadata
     item.metadata["Version"] += 1
     print('New item version is {}'.format(item.metadata["Version"]))
 
     # write out the metadata with updated version to our local file
     item._write_metadata()
+
+
+def upload(im, id):
+    item = im.get_item(id=id)
 
     # build zip file
     mf = build_zip_file(id, item.path)
@@ -286,7 +290,7 @@ def upload(im, id):
             response = im.rm_client._request('PUT', BlobURL, data=mf)
             retval = im.rm_client.update_metadata(item.metadata)
             print(retval)
-            print(response.ok)
+            # print(response.ok)
 
 
 def sync(im):

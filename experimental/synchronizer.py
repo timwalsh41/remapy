@@ -4,10 +4,10 @@ import io
 import model.document
 
 # Wareham
-REMARKABLE_IP = '192.168.1.162'
+# REMARKABLE_IP = '192.168.1.162'
 
 # Andover
-# REMARKABLE_IP = '192.168.39.150'
+REMARKABLE_IP = '192.168.39.149'
 
 # Password - from Settings -> Help > Copyrights and Licenses
 REMARKABLE_PASSWORD = '88D6RNPEL9'
@@ -83,6 +83,9 @@ class Synchronizer:
             metadata_json = json.loads(data)
 
             print('{} {}; RM version = {}; PC version = {}'.format(item.id(), item.metadata['VissibleName'], metadata_json['version'], item.metadata['Version']))
+
+            if '0e6' in item.id():
+                print('Remapy test')
 
             if item.metadata['Version'] > metadata_json['version']:
                 # update version in metadata

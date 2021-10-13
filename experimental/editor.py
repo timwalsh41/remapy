@@ -1,5 +1,6 @@
 import tkinter
 import tkinter.ttk as ttk
+import tkinter.font as tkFont
 from experimental import lines
 from experimental import text_upload_sync
 import model
@@ -127,6 +128,8 @@ class RemarkableEditor:
 
         self.update_page_label()
 
+        self.textbox_font = tkFont.Font(family='Calibri', size=18)
+
         # self.debug_button.place(x=10,y=10)
         # self.save_button.place(x=100,y=10)
 
@@ -169,9 +172,9 @@ class RemarkableEditor:
             self.canvas.delete('all')
 
             # delete any labels that have been created
-            while len(self.labels) > 0:
-                self.labels[0].destroy()
-                self.labels.pop(0)
+            # while len(self.labels) > 0:
+            #    self.labels[0].destroy()
+            #     self.labels.pop(0)
 
 
     def start_main_loop(self):
@@ -228,12 +231,16 @@ class RemarkableEditor:
         vbar_offset = self.vbar.get()[0]
 
         # compute adjusted y position to display correctly on scrolled canvas
-        y_adjusted = self.start_coords[1] - vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y
+        # y_adjusted = self.start_coords[1] - vbar_offset*lines.REMARKABLE_DISPLAY_MAX_Y
 
-        lbl = ttk.Label(self.top, text=new_string, width=self.text_size[0], font=TEXTBOX_FONT,
-                        wraplength=self.text_size[0] * TEXTBOX_WIDTH_DIVISOR, background="white")
-        lbl.bind('<Button-3>', self.right_click)
-        lbl.place(x=self.start_coords[0], y=y_adjusted)
+        # lbl = ttk.Label(self.top, text=new_string, width=self.text_size[0], font=TEXTBOX_FONT,
+        #                wraplength=self.text_size[0] * TEXTBOX_WIDTH_DIVISOR, background="white")
+        # lbl.bind('<Button-3>', self.right_click)
+        # lbl.place(x=self.start_coords[0], y=y_adjusted)
+
+        lbl = self.canvas.create_text(self.start_coords[0], self.start_coords[1], text=new_string, anchor=tkinter.NW,
+                                      font=self.textbox_font, width=self.text_size[0]*TEXTBOX_WIDTH_DIVISOR)
+        self.canvas.tag_bind(lbl, '<Button-3>', self.right_click)
         self.labels.append(lbl)
 
 
@@ -299,19 +306,19 @@ class RemarkableEditor:
 
 
     def right_click(self, event):
-        # if we clicked on a label then delete it
-        if isinstance(event.widget, ttk.Label):
-            if event.widget in self.labels:
-                # get index of label that was clicked
-                idx = [i for i in range(len(self.labels))
-                       if self.labels[i] == event.widget][0]
+        # get the closest object on the canvas to the right click
+        closest_object = event.widget.find_closest(event.x, event.y)[0]
+        if closest_object in self.labels:
+            # get index of label
+            idx = [i for i in range(len(self.labels))
+                   if self.labels[i] == closest_object][0]
 
-                # remove the entries from the text list and the list of labels
-                self.text_list[self.page_number].pop(idx)
-                self.labels.remove(event.widget)
+            # delete text entry from list
+            self.text_list[self.page_number].pop(idx)
+            self.labels.remove(closest_object)
 
-                # destroy the label
-                event.widget.destroy()
+            # remove label from canvas
+            self.canvas.delete(closest_object)
 
 
     def on_mousewheel(self, event):
@@ -334,17 +341,6 @@ class RemarkableEditor:
         # bottom = position of bottom of scroll bar
         # range is 0-1
         self.vbar.set(top, bottom)
-
-        # update location of existing text labels
-        for idx, lbl in enumerate(self.labels):
-            y_adjusted = self.text_list[self.page_number][idx].y - float(top) * lines.REMARKABLE_DISPLAY_MAX_Y
-            if y_adjusted > 0 and y_adjusted < CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y:
-                lbl.place(x=self.text_list[self.page_number][idx].x, y=y_adjusted)
-                # lbl.visible = True
-            else:
-                # place label off-window
-                # lbl.visible = False
-                lbl.place_forget()
 
 
     def write_output(self):
@@ -374,13 +370,19 @@ class RemarkableEditor:
             # connect to RM server
             im.rm_client.sign_in()
 
+            # increment version number
+            text_upload_sync.increment_version_number(im, id)
+
+            # we sync with local remarkable first as the remarkable now automatically updates a notebook version
+            # number when a new version is posted to the cloud (even though it doesn't download the update)
+            print('Sync to local')
+            text_upload_sync.sync(im)
+
             # upload to server
             print('Upload to server')
             text_upload_sync.upload(im, id)
 
-            # sync with local remarkable
-            # print('Sync to local')
-            # text_upload_sync.sync(im)
+
 
             self.unsaved_changes = False
 
