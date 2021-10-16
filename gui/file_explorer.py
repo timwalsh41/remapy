@@ -827,9 +827,7 @@ class FileExplorer(object):
         if item.type != model.document.TYPE_NOTEBOOK:
             self.log_console('Only can edit notebooks')
         else:
-            editor = RemarkableEditor(item.path_rm_files, page=item.metadata['CurrentPage'])
+            editor = RemarkableEditor(id, item.path_rm_files, page=item.metadata['CurrentPage'])
             editor.create_window()
             editor.draw_remarkable_page()
             editor.start_main_loop()
-
-        pass

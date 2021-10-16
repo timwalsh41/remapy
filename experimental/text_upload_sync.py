@@ -122,8 +122,10 @@ def add_strings_to_page(text_list, page_path):
     page = rm_parser.parse_rm_data()
 
     # open up our font
+    this_folder = os.path.dirname(os.path.abspath(__file__))
+    absolute_font_path = os.path.join(this_folder, vector_font_file)
     f = fonts.rm_font()
-    f.load_vector_alphabet(vector_font_file)
+    f.load_vector_alphabet(absolute_font_path)
 
     # now add strings one by one to the page
     for txt in text_list:
@@ -298,7 +300,7 @@ def sync(im):
     syncro.connect_ssh()
 
     if syncro.is_connected():
-        im.traverse_tree(fun=syncro.local_sync, document=True, collection=False)
+        im.traverse_tree(fun=syncro.local_sync_md5, document=True, collection=False)
 
     syncro.disconnect()
 

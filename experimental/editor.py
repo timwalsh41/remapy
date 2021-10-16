@@ -41,9 +41,11 @@ class TextEntry:
 
 
 class RemarkableEditor:
-    def __init__(self, path=None, page=0):
+    def __init__(self, id=None, path=None, page=0):
         if not os.path.exists(path):
             raise Exception('Path {} not found'.format(path))
+
+        self.id = id
 
         self.path = path
 
@@ -120,6 +122,7 @@ class RemarkableEditor:
         self.page_label = ttk.Label(text='')
         self.debug_button = ttk.Button(self.top, text='Debug', command=self.debug)
         self.save_button = ttk.Button(self.top, text='Save', command=self.write_output)
+        self.exit_button = ttk.Button(self.top, text='Close without saving', command=self.exit)
 
         self.draw_remarkable_page()
 
@@ -128,6 +131,7 @@ class RemarkableEditor:
         self.page_label.pack(side=tkinter.LEFT)
         self.next_button.pack(side=tkinter.LEFT)
         self.save_button.pack(side=tkinter.LEFT)
+        self.exit_button.pack(side=tkinter.LEFT)
         self.debug_button.pack(side=tkinter.LEFT)
 
         self.update_page_label()
@@ -376,18 +380,22 @@ class RemarkableEditor:
             im.rm_client.sign_in()
 
             # increment version number
-            text_upload_sync.increment_version_number(im, id)
+            # text_upload_sync.increment_version_number(im, self.id)
 
             # we sync with local remarkable first as the remarkable now automatically updates a notebook version
             # number when a new version is posted to the cloud (even though it doesn't download the update)
             print('Sync to local')
-            text_upload_sync.sync(im)
+            # text_upload_sync.sync(im)
 
             # upload to server
             print('Upload to server')
-            text_upload_sync.upload(im, id)
+            text_upload_sync.upload(im, self.id)
 
             self.unsaved_changes = False
+
+
+    def exit(self):
+        self.top.destroy()
 
 
     def debug(self):
@@ -423,6 +431,6 @@ if __name__ == '__main__':
 
     file_path = '/home/tim/.remapy/data/{}/{}/'.format(id, id)
 
-    rema = RemarkableEditor(file_path, page=0)
+    rema = RemarkableEditor(id, file_path, page=0)
     rema.create_window()
     rema.start_main_loop()

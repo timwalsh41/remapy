@@ -2,6 +2,7 @@ import paramiko
 import json
 import io
 import model.document
+import hashlib
 
 # Wareham
 # REMARKABLE_IP = '192.168.1.162'
@@ -13,7 +14,7 @@ REMARKABLE_IP = '192.168.39.149'
 REMARKABLE_PASSWORD = '88D6RNPEL9'
 
 # root folder for remarkable tree
-ROOT_FOLDER = '/home/root/.local/share/remarkable/xochitl/'
+RM_ROOT_FOLDER = '/home/root/.local/share/remarkable/xochitl/'
 
 HOST_KEYS_FILE = '/home/tim/.ssh/known_hosts'
 
@@ -71,37 +72,85 @@ class Synchronizer:
         return self._connected
 
 
+    # Local sync function to copy files from local repo to Remarkable.
+    # This version works by comparing page files (by calculating an md5 checksum) between the
+    # local repo and the Remarkable. Wherever there is a mismatch, we assume the latest version
+    # is in the local repo and copy the page to the Remarkable.
+    def local_sync_md5(self, item):
+        if item.type == model.document.TYPE_NOTEBOOK:
+            print('{}'.format(item.metadata['VissibleName']))
+
+            # grab content file to get page IDs
+            rm_content_path = RM_ROOT_FOLDER + item.id() + '.content'
+            content_file = self.sftp_client.open(rm_content_path, mode='r')
+            data = content_file.read().decode('utf-8')
+            content_file.close()
+            rm_content_json = json.loads(data)
+
+            for idx, page in enumerate(rm_content_json['pages']):
+                # path to the corresponding page in the local repo
+                local_pagefile_path = item.path + '/' + item.id() + '/' f'{idx}.rm'
+
+                # read in local pagefile
+                with open(local_pagefile_path, 'rb') as f:
+                    local_pagefile_data = f.read()
+
+                # calculate md5 digest for local pagefile
+                local_pagefile_md5 = hashlib.md5(local_pagefile_data).hexdigest()
+
+                # path to the page file on the remarkable
+                rm_pagefile_path = RM_ROOT_FOLDER + item.id() + '/' + f'{page}.rm'
+
+                # read in the page data from the remarkable
+                content_file = self.sftp_client.open(rm_pagefile_path, mode='rb')
+                rm_pagefile_data = content_file.read()
+                content_file.close()
+
+                # calculate md5 digest for the remarkable pagefile
+                rm_pagefile_md5 = hashlib.md5(rm_pagefile_data).hexdigest()
+
+                if local_pagefile_md5 != rm_pagefile_md5:
+                    print('\tCopying to Remarkable: {}.{}.{}'.format(item.id(), idx, page))
+                    self.sftp_client.put(localpath=local_pagefile_path, remotepath=rm_pagefile_path)
+                # else:
+                #    print('\tMatch: {}.{}.{}'.format(item.id(), idx, page))
+
+
+    # Local sync function - copy page files from local repo to Remarkable
+    # In this version of the function, files will be copied when the version on the
+    # local repo is later than the version on the Remarkable
+    # Note that Remarkable seems to update the version on the Remarkable whenever a file
+    # is uploaded to the cloud (even from the computer), so this method would only work
+    # when editing on a local machine and loading to the Remarkable before it's uploaded
+    # to the cloud. Use local_sync_md5 instead.
     def local_sync(self, item):
         if item.type == model.document.TYPE_NOTEBOOK:
 
-            metadata_remarkable_path = ROOT_FOLDER + item.id() + '.metadata'
-            content_remarkable_path = ROOT_FOLDER + item.id() + '.content'
+            rm_metadata_path = RM_ROOT_FOLDER + item.id() + '.metadata'
+            rm_content_path = RM_ROOT_FOLDER + item.id() + '.content'
 
-            metadata_file = self.sftp_client.open(metadata_remarkable_path, mode='r')
+            metadata_file = self.sftp_client.open(rm_metadata_path, mode='r')
             data = metadata_file.read().decode('utf-8')
             metadata_file.close()
-            metadata_json = json.loads(data)
+            rm_metadata_json = json.loads(data)
 
             print('{} {}; RM version = {}; PC version = {}'.format(item.id(), item.metadata['VissibleName'], metadata_json['version'], item.metadata['Version']))
 
-            if '0e6' in item.id():
-                print('Remapy test')
-
-            if item.metadata['Version'] > metadata_json['version']:
+            if item.metadata['Version'] > rm_metadata_json['version']:
                 # update version in metadata
-                metadata_json['version'] = item.metadata['Version']
+                rm_metadata_json['version'] = item.metadata['Version']
 
                 # now write this out to the remarkable
-                metadata_io = io.StringIO(json.dumps(metadata_json, indent=4))
-                self.sftp_client.putfo(fl=metadata_io, remotepath=metadata_remarkable_path)
+                metadata_io = io.StringIO(json.dumps(rm_metadata_json, indent=4))
+                self.sftp_client.putfo(fl=metadata_io, remotepath=rm_metadata_path)
 
                 # grab content file to get page IDs
-                content_file = self.sftp_client.open(content_remarkable_path, mode='r')
+                content_file = self.sftp_client.open(rm_content_path, mode='r')
                 data  = content_file.read().decode('utf-8')
                 content_file.close()
-                content_json = json.loads(data)
+                rm_content_json = json.loads(data)
 
-                for idx,page in enumerate(content_json['pages']):
+                for idx,page in enumerate(rm_content_json['pages']):
                     print('Updating page {} - {}'.format(idx, page))
 
                     # source pagefile is the .rm page path on the local machine
@@ -111,10 +160,10 @@ class Synchronizer:
                     source_metadatafile = item.path + '/' + item.id() + '/' f'{idx}-metadata.json'
 
                     # destination pagefile is the .rm page path on the remarkable
-                    destination_pagefile = ROOT_FOLDER + item.id() + '/' + f'{page}.rm'
+                    destination_pagefile = RM_ROOT_FOLDER + item.id() + '/' + f'{page}.rm'
 
                     # destination metadata file on the remarkable
-                    destination_metadatafile = ROOT_FOLDER + item.id() + '/' + f'{page}-metadata.json'
+                    destination_metadatafile = RM_ROOT_FOLDER + item.id() + '/' + f'{page}-metadata.json'
 
                     # transfer local page and metadata files to the remarkable
                     self.sftp_client.put(localpath=source_pagefile, remotepath=destination_pagefile)
