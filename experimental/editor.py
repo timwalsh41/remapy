@@ -90,6 +90,9 @@ class RemarkableEditor:
     def create_window(self):
         self.top = tkinter.Tk()
         self.top.title('remapy editor')
+
+        self.textbox_font = tkFont.Font(family='Calibri', size=18)
+
         self.frame = tkinter.Frame(self.top, width=lines.REMARKABLE_DISPLAY_MAX_X + 100,
                                    height=CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y)
         self.frame.pack(expand=True, fill=tkinter.BOTH)
@@ -119,6 +122,7 @@ class RemarkableEditor:
         self.save_button = ttk.Button(self.top, text='Save', command=self.write_output)
 
         self.draw_remarkable_page()
+
         self.canvas.pack(side=tkinter.LEFT,expand=True,fill=tkinter.BOTH)
         self.last_button.pack(side=tkinter.LEFT)
         self.page_label.pack(side=tkinter.LEFT)
@@ -127,8 +131,6 @@ class RemarkableEditor:
         self.debug_button.pack(side=tkinter.LEFT)
 
         self.update_page_label()
-
-        self.textbox_font = tkFont.Font(family='Calibri', size=18)
 
         # self.debug_button.place(x=10,y=10)
         # self.save_button.place(x=100,y=10)
@@ -239,7 +241,10 @@ class RemarkableEditor:
         # lbl.place(x=self.start_coords[0], y=y_adjusted)
 
         lbl = self.canvas.create_text(self.start_coords[0], self.start_coords[1], text=new_string, anchor=tkinter.NW,
-                                      font=self.textbox_font, width=self.text_size[0]*TEXTBOX_WIDTH_DIVISOR)
+                                      font='calibri 18', width=self.text_size[0]*TEXTBOX_WIDTH_DIVISOR)
+        # TODO: why isn't TkFont/self.textbox_font working here; it only works when running editor.py
+        # as __main__
+        # self.canvas.itemconfigure(lbl, font=self.textbox_font)
         self.canvas.tag_bind(lbl, '<Button-3>', self.right_click)
         self.labels.append(lbl)
 
@@ -382,8 +387,6 @@ class RemarkableEditor:
             print('Upload to server')
             text_upload_sync.upload(im, id)
 
-
-
             self.unsaved_changes = False
 
 
@@ -422,5 +425,4 @@ if __name__ == '__main__':
 
     rema = RemarkableEditor(file_path, page=0)
     rema.create_window()
-    rema.draw_remarkable_page()
     rema.start_main_loop()

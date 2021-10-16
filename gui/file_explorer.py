@@ -26,6 +26,7 @@ from model.item import Item
 import model.document
 from model.document import Document
 import utils.config
+from experimental.editor import RemarkableEditor
 
 
 class FileExplorer(object):
@@ -292,6 +293,11 @@ class FileExplorer(object):
 
 
     def tree_right_click(self, event):
+        # select right clicked item
+        iid = self.tree.identify_row(event.y)
+        if iid:
+            self.tree.selection_set(iid)
+
         selected_ids = self.tree.selection()
         if selected_ids:
             items = [self.item_manager.get_item(id) for id in selected_ids]
@@ -811,18 +817,19 @@ class FileExplorer(object):
         selected_ids = self.tree.selection()
 
         id = selected_ids[0]
-        self.log_console('Selected {}'.format(id))
+        # self.log_console('Selected {}'.format(id))
 
         item = self.item_manager.get_item(id)
-        print('rm file path = {}'.format(item.path_rm_files))
+        # print('rm file path = {}'.format(item.path_rm_files))
 
-        parent_id = str(item.parent().id() if item.is_document() else item.id())
+        # parent_id = str(item.parent().id() if item.is_document() else item.id())
 
-        # Upload
-        #item = self.item_manager.upload_file(
-        #    id, parent_id, name,
-        #    filetype, data,
-        #    self._update_tree_item)
-        #self.log_console("Successfully uploaded %s" % item.full_name())
+        if item.type != model.document.TYPE_NOTEBOOK:
+            self.log_console('Only can edit notebooks')
+        else:
+            editor = RemarkableEditor(item.path_rm_files, page=item.metadata['CurrentPage'])
+            editor.create_window()
+            editor.draw_remarkable_page()
+            editor.start_main_loop()
 
         pass
