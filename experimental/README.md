@@ -4,7 +4,7 @@
 * fonts.py: a class for importing truetype fonts and providing characters in bitmap or vector format for plotting and translation to rm lines format
 * lines.py: a class to represent the components of a remarkable page, provides classes Page, Layer, Line, and Point for this purpose. Also provides an enum class Pen for the various remarkable pen types. Finally, provides a class LineParser to parse a remarkable lines file and return it as a Page object.
 * synchronizer.py: a class to synchronize (copy) modified remarkable page files from the remapy local cache onto the remarkable via SSH/SFTP
-* 
+* editor.py: a class to edit Remarkable notebook files in a standalone window
 
 ### Test files
 * canvas_test.py: test of tkinter canvas for doing live editing of remarkable documents

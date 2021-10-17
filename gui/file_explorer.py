@@ -544,22 +544,12 @@ class FileExplorer(object):
 
     def sync_post_edit(self):
         # run a local sync to Remarkable, also syncing the edited item to the cloud
-        self.run_local_sync(item=self.item_manager.get_item(self.edited_id))
-
-
-    def run_local_sync(self, item=None):
-        if not self.local_sync_in_progress:
-            self.local_sync_in_progress = True
-            thread = threading.Thread(target=self._local_sync, args=(item,))
-            thread.start()
+        thread = threading.Thread(target=self._local_sync_item)
+        thread.run()
 
 
     def _local_sync(self, item):
         print('Running local sync')
-        if item is not None:
-            self._sync_and_open_item(item, force=True, open_file=False,
-                                     open_original=False, open_oap=False)
-            print('Syncing {}'.format(item.id()))
 
         syncro = Synchronizer(ip=self.remarkable_ip, password=self.remarkable_root_password)
         syncro.connect_ssh()
@@ -577,13 +567,20 @@ class FileExplorer(object):
 
 
     def _local_sync_item(self):
-        selected_ids = self.tree.selection()
+        item = self.item_manager.get_item(self.edited_id)
+
+        # sync with server (this should update the local copy, including pdf, to the edits
+        # that were just entered)
+        self._sync_and_open_item(item, force=True, open_file=False,
+                                 open_original=False, open_oap=False)
+
+        # create syncro object to sync item to Remarkable over SSH/SFTP
         syncro = Synchronizer(ip=self.remarkable_ip, password=self.remarkable_root_password)
         syncro.connect_ssh()
 
         if syncro.is_connected():
             self.log_console('Syncing to Remarkable')
-            syncro.local_sync_md5(self.item_manager.get_item(selected_ids[0]))
+            syncro.local_sync_md5(item)
         else:
             self.log_console('Unable to sync to remarkable - check IP/password, and that Remarkable is on and connected to WiFi')
 
@@ -899,7 +896,7 @@ class FileExplorer(object):
             self.log_console('Only can edit notebooks')
         else:
             editor = RemarkableEditor(self.edited_id, item.path_rm_files, page=item.metadata['CurrentPage'],
-                                      sync_fun=self.sync_post_edit)
+                                      sync_fun=self.sync_post_edit, im=self.item_manager)
             editor.create_window()
             editor.draw_remarkable_page()
             editor.start_main_loop()

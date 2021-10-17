@@ -182,3 +182,11 @@ class Item(object):
     def _write_metadata(self):
         with open(self.path_metadata_local, "w") as out:
             out.write(json.dumps(self.metadata, indent=4))
+
+
+    def increment_version_number(self):
+        self.metadata["Version"] += 1
+        print('New item version is {}'.format(self.metadata["Version"]))
+
+        # write out the metadata with updated version to our local file
+        self._write_metadata()

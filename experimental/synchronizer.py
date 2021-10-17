@@ -16,10 +16,11 @@ REMARKABLE_PASSWORD = '88D6RNPEL9'
 # root folder for remarkable tree
 RM_ROOT_FOLDER = '/home/root/.local/share/remarkable/xochitl/'
 
+# TODO: find add known hosts file to settings
 HOST_KEYS_FILE = '/home/tim/.ssh/known_hosts'
 
 class Synchronizer:
-    def __init__(self, ip=None, password=None):
+    def __init__(self, ip=REMARKABLE_IP, password=REMARKABLE_PASSWORD):
         # configure paramiko ssh client
         self.client = paramiko.SSHClient()
         self.client.load_host_keys(HOST_KEYS_FILE)
@@ -47,6 +48,9 @@ class Synchronizer:
                 self.client.connect(ip, username='root', password=password, timeout=30)
                 self.transport = self.client.get_transport()
                 self.sftp_client = self.client.open_sftp()
+
+                # we'll set the sftp timeout to 60 seconds; if the Remarkable goes to sleep during
+                # local sync we want the process to timeout in a reasonable amount of time
                 self.sftp_client.get_channel().settimeout(60)
                 self._connected = True
 
@@ -80,7 +84,7 @@ class Synchronizer:
     # is in the local repo and copy the page to the Remarkable.
     def local_sync_md5(self, item):
         if not self.is_connected():
-            print('Lost SSH connection')
+            print('No SSH connection - aborting sync effort')
             return
 
         if item.type == model.document.TYPE_NOTEBOOK:
@@ -93,6 +97,8 @@ class Synchronizer:
                 print('Lost SSH connection')
                 return
 
+            # attempt to read content file from Remarkable, we will get an exception if the
+            # process times out
             try:
                 content_file = self.sftp_client.open(rm_content_path, mode='r')
                 data = content_file.read().decode('utf-8')
@@ -103,6 +109,8 @@ class Synchronizer:
 
             rm_content_json = json.loads(data)
 
+            # loop over each page in the notebook, comparing the local version and the version
+            # on the Remarkable
             for idx, page in enumerate(rm_content_json['pages']):
                 # path to the corresponding page in the local repo
                 local_pagefile_path = item.path + '/' + item.id() + '/' f'{idx}.rm'
@@ -157,7 +165,7 @@ class Synchronizer:
     # In this version of the function, files will be copied when the version on the
     # local repo is later than the version on the Remarkable
     # Note that Remarkable seems to update the version on the Remarkable whenever a file
-    # is uploaded to the cloud (even from the computer), so this method would only work
+    # is uploaded to the cloud (even from RemaPy), so this method would only work
     # when editing on a local machine and loading to the Remarkable before it's uploaded
     # to the cloud. Use local_sync_md5 instead.
     def local_sync(self, item):
