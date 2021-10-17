@@ -27,6 +27,7 @@ import model.document
 from model.document import Document
 import utils.config
 from experimental.editor import RemarkableEditor
+from experimental.synchronizer import Synchronizer
 
 
 class FileExplorer(object):
@@ -104,6 +105,7 @@ class FileExplorer(object):
         self.context_menu.add_command(label='Open folder', command=self.btn_open_in_file_explorer)
         self.context_menu.add_separator()
         self.context_menu.add_command(label='ReSync', accelerator="F5", command=self.btn_resync_item_click)
+        self.context_menu.add_command(label='EXPERIMENTAL: Local sync', command=self.btn_local_sync_item)
         self.context_menu.add_command(label='Toggle bookmark', accelerator="Ctrl+B", command=self.btn_toggle_bookmark)
         self.context_menu.add_command(label='Rename...', accelerator="F2", command=self.btn_rename_item_click)
         self.context_menu.add_command(label='Delete', accelerator="Del", command=self.btn_delete_item_click)
@@ -140,6 +142,16 @@ class FileExplorer(object):
 
         self.rm_client.listen_sign_in_event(self)
 
+        # placeholders for root password and IP address, which are needed for local sync
+        # these will be updated by update_synchronizer_settings
+        self.remarkable_root_password = ''
+        self.remarkable_ip = ''
+
+        # a placeholder to store the id of the item we are editing
+        self.edited_id = None
+
+        self.local_sync_in_progress = False
+
 
     def _set_online_mode(self, mode):
         self.btn_sync.config(state=mode)
@@ -149,7 +161,7 @@ class FileExplorer(object):
         self.context_menu.entryconfig(7, state=mode)
         self.context_menu.entryconfig(8, state=mode)
         self.context_menu.entryconfig(9, state=mode)
-        self.context_menu.entryconfig(11, state=mode)
+        self.context_menu.entryconfig(12, state=mode)
 
         bg = "#ffffff" if mode == "normal" else "#bdbdbd"
         self.tree_style.configure("remapy.style.Treeview", background=bg)
@@ -429,6 +441,10 @@ class FileExplorer(object):
                 open_file=False,
                 open_original=False)
 
+    def btn_local_sync_item(self):
+        thread = threading.Thread(target=self._local_sync_item)
+        thread.start()
+
 
     def tree_double_click(self, event):
         selected_ids = self.tree.selection()
@@ -493,6 +509,7 @@ class FileExplorer(object):
 
 
     def btn_sync_click(self):
+
         self.log_console("Syncing all documents...")
         root, self.is_online = self.item_manager.get_root(force=True)
 
@@ -523,6 +540,54 @@ class FileExplorer(object):
         """
         thread = threading.Thread(target=self._sync_items, args=(items, force, open_file, open_original, open_oap))
         thread.start()
+
+
+    def sync_post_edit(self):
+        # run a local sync to Remarkable, also syncing the edited item to the cloud
+        self.run_local_sync(item=self.item_manager.get_item(self.edited_id))
+
+
+    def run_local_sync(self, item=None):
+        if not self.local_sync_in_progress:
+            self.local_sync_in_progress = True
+            thread = threading.Thread(target=self._local_sync, args=(item,))
+            thread.start()
+
+
+    def _local_sync(self, item):
+        print('Running local sync')
+        if item is not None:
+            self._sync_and_open_item(item, force=True, open_file=False,
+                                     open_original=False, open_oap=False)
+            print('Syncing {}'.format(item.id()))
+
+        syncro = Synchronizer(ip=self.remarkable_ip, password=self.remarkable_root_password)
+        syncro.connect_ssh()
+
+        if syncro.is_connected():
+            self.log_console('Syncing to Remarkable')
+            self.item_manager.traverse_tree(fun=syncro.local_sync_md5, document=True, collection=False)
+        else:
+            self.log_console('Unable to sync to remarkable - check IP/password, and that Remarkable is on and connected to WiFi')
+
+        syncro.disconnect()
+        self.local_sync_in_progress = False
+
+        print('Finished syncing')
+
+
+    def _local_sync_item(self):
+        selected_ids = self.tree.selection()
+        syncro = Synchronizer(ip=self.remarkable_ip, password=self.remarkable_root_password)
+        syncro.connect_ssh()
+
+        if syncro.is_connected():
+            self.log_console('Syncing to Remarkable')
+            syncro.local_sync_md5(self.item_manager.get_item(selected_ids[0]))
+        else:
+            self.log_console('Unable to sync to remarkable - check IP/password, and that Remarkable is on and connected to WiFi')
+
+        syncro.disconnect()
 
 
     def _sync_items(self, items, force, open_file, open_original, open_oap):
@@ -563,6 +628,10 @@ class FileExplorer(object):
             q.put(None)
         for t in threads:
             t.join()
+
+        if not self.local_sync_in_progress:
+            self.local_sync_in_progress = True
+            self._local_sync(item=None)
 
 
     def _sync_and_open_item(self, item, force, open_file, open_original, open_oap):
@@ -813,21 +882,29 @@ class FileExplorer(object):
                 item.set_bookmarked(not item.bookmarked())
         threading.Thread(target=run).start()
 
+
     def btn_test_modification(self):
         selected_ids = self.tree.selection()
 
-        id = selected_ids[0]
+        self.edited_id = selected_ids[0]
         # self.log_console('Selected {}'.format(id))
 
-        item = self.item_manager.get_item(id)
+        item = self.item_manager.get_item(self.edited_id)
         # print('rm file path = {}'.format(item.path_rm_files))
-
         # parent_id = str(item.parent().id() if item.is_document() else item.id())
+
+        self.log_console('Editing {} {}'.format(self.edited_id, item.metadata['VissibleName']))
 
         if item.type != model.document.TYPE_NOTEBOOK:
             self.log_console('Only can edit notebooks')
         else:
-            editor = RemarkableEditor(id, item.path_rm_files, page=item.metadata['CurrentPage'])
+            editor = RemarkableEditor(self.edited_id, item.path_rm_files, page=item.metadata['CurrentPage'],
+                                      sync_fun=self.sync_post_edit)
             editor.create_window()
             editor.draw_remarkable_page()
             editor.start_main_loop()
+
+
+    def update_synchronizer_settings(self, new_IP, new_password):
+        self.remarkable_ip = new_IP
+        self.remarkable_root_password = new_password

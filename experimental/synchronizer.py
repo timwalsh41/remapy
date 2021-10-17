@@ -44,8 +44,10 @@ class Synchronizer:
 
         if password is not None and ip is not None:
             try:
-                self.client.connect(ip, username='root', password=password)
+                self.client.connect(ip, username='root', password=password, timeout=30)
+                self.transport = self.client.get_transport()
                 self.sftp_client = self.client.open_sftp()
+                self.sftp_client.get_channel().settimeout(60)
                 self._connected = True
 
             except paramiko.ssh_exception.AuthenticationException:
@@ -69,7 +71,7 @@ class Synchronizer:
 
 
     def is_connected(self):
-        return self._connected
+        return self._connected and self.transport.is_active()
 
 
     # Local sync function to copy files from local repo to Remarkable.
@@ -77,23 +79,43 @@ class Synchronizer:
     # local repo and the Remarkable. Wherever there is a mismatch, we assume the latest version
     # is in the local repo and copy the page to the Remarkable.
     def local_sync_md5(self, item):
+        if not self.is_connected():
+            print('Lost SSH connection')
+            return
+
         if item.type == model.document.TYPE_NOTEBOOK:
             print('{}'.format(item.metadata['VissibleName']))
 
             # grab content file to get page IDs
             rm_content_path = RM_ROOT_FOLDER + item.id() + '.content'
-            content_file = self.sftp_client.open(rm_content_path, mode='r')
-            data = content_file.read().decode('utf-8')
-            content_file.close()
+
+            if not self.is_connected():
+                print('Lost SSH connection')
+                return
+
+            try:
+                content_file = self.sftp_client.open(rm_content_path, mode='r')
+                data = content_file.read().decode('utf-8')
+                content_file.close()
+            except:
+                print('Unable to access remote file {}'.format(rm_content_path))
+                return
+
             rm_content_json = json.loads(data)
 
             for idx, page in enumerate(rm_content_json['pages']):
                 # path to the corresponding page in the local repo
                 local_pagefile_path = item.path + '/' + item.id() + '/' f'{idx}.rm'
 
+                print('\tProcessing page {}'.format(idx))
+
                 # read in local pagefile
-                with open(local_pagefile_path, 'rb') as f:
-                    local_pagefile_data = f.read()
+                try:
+                    with open(local_pagefile_path, 'rb') as f:
+                        local_pagefile_data = f.read()
+                except:
+                    print('Unable to sync page {}-{}'.format(item.metadata['VissibleName'], idx))
+                    continue
 
                 # calculate md5 digest for local pagefile
                 local_pagefile_md5 = hashlib.md5(local_pagefile_data).hexdigest()
@@ -101,17 +123,32 @@ class Synchronizer:
                 # path to the page file on the remarkable
                 rm_pagefile_path = RM_ROOT_FOLDER + item.id() + '/' + f'{page}.rm'
 
+                if not self.is_connected():
+                    print('Lost SSH connection')
+                    return
+
                 # read in the page data from the remarkable
-                content_file = self.sftp_client.open(rm_pagefile_path, mode='rb')
-                rm_pagefile_data = content_file.read()
-                content_file.close()
+                try:
+                    content_file = self.sftp_client.open(rm_pagefile_path, mode='rb')
+                    rm_pagefile_data = content_file.read()
+                    content_file.close()
+                except:
+                    print('Unable to access remote file {}'.format(rm_pagefile_path))
+                    continue
 
                 # calculate md5 digest for the remarkable pagefile
                 rm_pagefile_md5 = hashlib.md5(rm_pagefile_data).hexdigest()
 
                 if local_pagefile_md5 != rm_pagefile_md5:
                     print('\tCopying to Remarkable: {}.{}.{}'.format(item.id(), idx, page))
-                    self.sftp_client.put(localpath=local_pagefile_path, remotepath=rm_pagefile_path)
+                    if not self.is_connected():
+                        print('Lost SSH connection')
+                        return
+
+                    try:
+                        self.sftp_client.put(localpath=local_pagefile_path, remotepath=rm_pagefile_path)
+                    except:
+                        print('Unable to copy into remote file {}'.format(rm_pagefile_path))
                 # else:
                 #    print('\tMatch: {}.{}.{}'.format(item.id(), idx, page))
 

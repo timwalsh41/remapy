@@ -41,13 +41,13 @@ class TextEntry:
 
 
 class RemarkableEditor:
-    def __init__(self, id=None, path=None, page=0):
+    def __init__(self, id=None, path=None, page=0, sync_fun=None):
         if not os.path.exists(path):
             raise Exception('Path {} not found'.format(path))
 
         self.id = id
-
         self.path = path
+        self.sync_fun = sync_fun
 
         # get remarkable page files in path
         page_files = glob.glob(os.path.join(self.path, '*.rm'))
@@ -91,7 +91,7 @@ class RemarkableEditor:
 
     def create_window(self):
         self.top = tkinter.Tk()
-        self.top.title('remapy editor')
+        self.top.title('RemaPy Editor')
 
         self.textbox_font = tkFont.Font(family='Calibri', size=18)
 
@@ -119,10 +119,10 @@ class RemarkableEditor:
 
         self.last_button = ttk.Button(self.top, text='<<', command=self.last_page)
         self.next_button = ttk.Button(self.top, text='>>', command=self.next_page)
-        self.page_label = ttk.Label(text='')
+        self.page_label = ttk.Label(self.top, text='    Page {}/{}    '.format(self.page_number, self.num_pages))
         self.debug_button = ttk.Button(self.top, text='Debug', command=self.debug)
         self.save_button = ttk.Button(self.top, text='Save', command=self.write_output)
-        self.exit_button = ttk.Button(self.top, text='Close without saving', command=self.exit)
+        self.exit_button = ttk.Button(self.top, text='Close', command=self.exit)
 
         self.draw_remarkable_page()
 
@@ -357,7 +357,7 @@ class RemarkableEditor:
             for page in range(self.num_pages):
                 if len(self.text_list[page]) > 0:
                     # get path to page file
-                    page_path = os.path.join(self.path, '{}.rm'.format(self.page_number))
+                    page_path = os.path.join(self.path, '{}.rm'.format(page))
                     if not os.path.exists(page_path):
                         raise Exception('Page path {} not found')
 
@@ -377,19 +377,18 @@ class RemarkableEditor:
             im = model.item_manager.ItemManager()
 
             # connect to RM server
-            im.rm_client.sign_in()
+            # im.rm_client.sign_in()
 
             # increment version number
-            # text_upload_sync.increment_version_number(im, self.id)
-
-            # we sync with local remarkable first as the remarkable now automatically updates a notebook version
-            # number when a new version is posted to the cloud (even though it doesn't download the update)
-            print('Sync to local')
-            # text_upload_sync.sync(im)
+            text_upload_sync.increment_version_number(im, self.id)
 
             # upload to server
             print('Upload to server')
             text_upload_sync.upload(im, self.id)
+
+            # print('Sync to local')
+            # text_upload_sync.sync(im)
+            self.sync_fun()
 
             self.unsaved_changes = False
 

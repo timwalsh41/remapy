@@ -67,6 +67,11 @@ class Main(object):
         self.about = About(frame)
         self.notebook.add(frame, text="About")
 
+        # we need to register the sync settings change callback (when the user changes the
+        # Remarkable IP or root password, this information is communicated to the file explorer
+        # for local sync operation)
+        self.settings.register_sync_setting_change_callback(self.file_explorer.update_synchronizer_settings)
+
         # Try to sign in to the rm cloud without a onetime code i.e. we 
         # assume that the user token is already available. If it is not 
         # possible we get a signal to disable "My remarkable" and settings

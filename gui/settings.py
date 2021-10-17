@@ -18,14 +18,15 @@ class Settings(object):
         self.item_manager = ItemManager()
 
         root.grid_columnconfigure(4, minsize=180)
-        root.grid_rowconfigure(1, minsize=50)
-        root.grid_rowconfigure(2, minsize=30)
-        root.grid_rowconfigure(3, minsize=30)
-        root.grid_rowconfigure(4, minsize=30)
-        root.grid_rowconfigure(6, minsize=50)
-        root.grid_rowconfigure(7, minsize=30)
-        root.grid_rowconfigure(8, minsize=30)
-        root.grid_rowconfigure(9, minsize=50)
+        root.grid_rowconfigure(1, minsize=40)
+        root.grid_rowconfigure(2, minsize=20)
+        root.grid_rowconfigure(3, minsize=20)
+        root.grid_rowconfigure(4, minsize=20)
+        root.grid_rowconfigure(6, minsize=40)
+        root.grid_rowconfigure(7, minsize=20)
+        root.grid_rowconfigure(8, minsize=20)
+        root.grid_rowconfigure(9, minsize=20)
+        root.grid_rowconfigure(13, minsize=40)
 
         # gaps between columns
         label = tk.Label(root, text="    ")
@@ -83,33 +84,61 @@ class Settings(object):
         label = tk.Label(root, justify="left", anchor="w", text="A local folder that will be used as the root folder for backups.")
         label.grid(row=8, column=7, sticky="W")
 
-        self.btn_save = tk.Button(root, text="Save", command=self.btn_save_click, width=17)
-        self.btn_save.grid(row=9, column=4, sticky="W")
-
         label = tk.Label(root, text="Backup", font="Helvetica 14 bold")
-        label.grid(row=10, column=2, sticky="W")
+        label.grid(row=9, column=2, sticky="W")
 
         label = tk.Label(root, text="Backup path:")
-        label.grid(row=11, column=2, sticky="W")
+        label.grid(row=10, column=2, sticky="W")
         self.backup_folder_text = tk.StringVar()
 
         backup_folder = str(date.today().strftime("%Y-%m-%d"))
         self.backup_folder_text.set(backup_folder)
         self.entry_backup_folder = tk.Entry(root, textvariable=self.backup_folder_text)
-        self.entry_backup_folder.grid(row=11, column=4, sticky="W")
+        self.entry_backup_folder.grid(row=10, column=4, sticky="W")
 
         self.label_backup_progress = tk.Label(root)
         self.label_backup_progress.grid(row=11, column=6)
 
         label = tk.Label(root, justify="left", anchor="w", text="Copy currently downloaded and annotated PDF files \ninto the given directory. Note that those files can not \nbe restored on the tablet.")
-        label.grid(row=11, column=7, sticky="W")
+        label.grid(row=10, column=7, sticky="W")
 
         self.btn_create_backup = tk.Button(root, text="Create backup", command=self.btn_create_backup, width=17)
-        self.btn_create_backup.grid(row=12, column=4, sticky="W")
+        self.btn_create_backup.grid(row=11, column=4, sticky="W")
+
+        label = tk.Label(root, text="Remarkable sync", font="Helvetica 14 bold")
+        label.grid(row=12, column=2, sticky="W")
+
+        label = tk.Label(root, text="Remarkable IP:")
+        label.grid(row=13, column=2, sticky="W")
+        self.remarkable_ip_text = tk.StringVar()
+
+        self.remarkable_ip_text.set(cfg.get("remarkable_sync.ip", default=""))
+        self.remarkable_ip_text.trace('w', self.update_sync_settings)
+        self.entry_remarkable_ip = tk.Entry(root, textvariable=self.remarkable_ip_text)
+        self.entry_remarkable_ip.grid(row=13, column=4, sticky="W")
+
+        label = tk.Label(root, justify="left", anchor="w",
+                         text="Provide the IP address and password for your \nRemarkable to allow syncing of locally edited files \nonto the Remarkable. The IP address and root \npassword can be found by going to Menu->Settings->\nHelp->Copyright and licenses. Note your Remarkable \nmust be on and connected to the same wifi network \nin order to sync.")
+        label.grid(row=12, column=7, sticky="W", rowspan=3)
+
+        label = tk.Label(root, text="Root password:")
+        label.grid(row=14, column=2, sticky="W")
+        self.remarkable_root_password = tk.StringVar()
+
+        self.remarkable_root_password.set(cfg.get("remarkable_sync.root_password", default=""))
+        self.remarkable_root_password.trace('w', self.update_sync_settings)
+        self.entry_remarkable_root_password = tk.Entry(root, textvariable=self.remarkable_root_password)
+        self.entry_remarkable_root_password.grid(row=14, column=4, sticky="W")
+
+        self.btn_save = tk.Button(root, text="Save settings", command=self.btn_save_click, width=17)
+        self.btn_save.grid(row=15, column=4, sticky="W")
 
         # Subscribe to sign in event. Outer logic (i.e. main) can try to
         # sign in automatically...
         self.rm_client.listen_sign_in_event(self)
+
+        # stub for hook to update file explorer remarkable IP/password settings
+        self.sync_settings_change_callback = None
 
 
     #
@@ -151,13 +180,34 @@ class Settings(object):
         self.rm_client.sign_in(onetime_code)
 
 
+    def update_sync_settings(self, *args):
+        # save updated values to config
+        remarkable_sync = {
+            "ip": self.remarkable_ip_text.get(),
+            "root_password": self.remarkable_root_password.get()
+        }
+        cfg.save({"remarkable_sync": remarkable_sync})
+
+        # update file explorer
+        if self.sync_settings_change_callback is not None:
+            self.sync_settings_change_callback(self.remarkable_ip_text.get(), self.remarkable_root_password.get())
+
+
+    def register_sync_setting_change_callback(self, fun):
+        self.sync_settings_change_callback = fun
+        fun(self.remarkable_ip_text.get(), self.remarkable_root_password.get())
+
 
     def btn_save_click(self):
         general = {
             "templates": self.entry_templates_text.get(),
             "backuproot": self.backup_root_text.get()
         }
-        cfg.save({"general": general})
+        remarkable_sync = {
+            "ip": self.remarkable_ip_text.get(),
+            "root_password": self.remarkable_root_password.get()
+        }
+        cfg.save({"general": general, "remarkable_sync": remarkable_sync})
 
 
     def btn_create_backup(self):
