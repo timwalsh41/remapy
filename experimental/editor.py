@@ -115,12 +115,11 @@ class RemarkableEditor:
 
         self.frame = tkinter.Frame(self.top, width=lines.REMARKABLE_DISPLAY_MAX_X + 100,
                                    height=CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y)
-        self.frame.pack(expand=True, fill=tkinter.BOTH)
+
         self.canvas = tkinter.Canvas(self.frame, bg="white", height=CANVAS_SCROLL_Y_FRACTION*lines.REMARKABLE_DISPLAY_MAX_Y,
                                 width=lines.REMARKABLE_DISPLAY_MAX_X,
                                 scrollregion=[0,0,lines.REMARKABLE_DISPLAY_MAX_X, lines.REMARKABLE_DISPLAY_MAX_Y])
         self.vbar = tkinter.Scrollbar(self.frame, orient=tkinter.VERTICAL)
-        self.vbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
         self.vbar.config(command=self.canvas.yview)
         # self.canvas.config(yscrollcommand=self.vbar.set)
         self.canvas.config(yscrollcommand=self.on_scroll)
@@ -135,23 +134,27 @@ class RemarkableEditor:
         self.canvas.bind_all('<Button-4>', self.on_mousewheel)  # scroll up
         self.canvas.bind_all('<Button-5>', self.on_mousewheel)  # scroll down
 
-        self.last_button = ttk.Button(self.top, text='<<', command=self.last_page)
-        self.next_button = ttk.Button(self.top, text='>>', command=self.next_page)
-        self.page_label = ttk.Label(self.top, text='    Page {}/{}    '.format(self.page_number, self.num_pages))
-        self.debug_button = ttk.Button(self.top, text='Debug', command=self.debug)
-        self.save_button = ttk.Button(self.top, text='Save', command=self.write_output)
-        self.exit_button = ttk.Button(self.top, text='Close', command=self.exit)
+        button_frame = tkinter.Frame(self.top)
+        self.last_button = ttk.Button(button_frame, text='<<', command=self.last_page)
+        self.next_button = ttk.Button(button_frame, text='>>', command=self.next_page)
+        self.page_label = ttk.Label(button_frame, text='    Page {}/{}    '.format(self.page_number, self.num_pages))
+        self.debug_button = ttk.Button(button_frame, text='Debug', command=self.debug)
+        self.save_button = ttk.Button(button_frame, text='Save', command=self.write_output)
+        self.exit_button = ttk.Button(button_frame, text='Close', command=self.exit)
 
         # draw the remarkable page contents for the current page
         self.draw_remarkable_page()
 
-        self.canvas.pack(side=tkinter.LEFT,expand=True,fill=tkinter.BOTH)
+        button_frame.pack(side=tkinter.TOP, fill=tkinter.X)
         self.last_button.pack(side=tkinter.LEFT)
         self.page_label.pack(side=tkinter.LEFT)
         self.next_button.pack(side=tkinter.LEFT)
         self.save_button.pack(side=tkinter.LEFT)
         self.exit_button.pack(side=tkinter.LEFT)
         self.debug_button.pack(side=tkinter.LEFT)
+        self.frame.pack(side=tkinter.BOTTOM, expand=True, fill=tkinter.BOTH)
+        self.vbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
+        self.canvas.pack(side=tkinter.BOTTOM, expand=True, fill=tkinter.BOTH)
 
         self.update_page_label()
 

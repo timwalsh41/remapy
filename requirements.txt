@@ -6,3 +6,5 @@ pdfrw
 reportlab
 pathlib
 wheel
+freetype-py
+paramiko
