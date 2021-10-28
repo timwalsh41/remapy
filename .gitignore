@@ -133,7 +133,7 @@ dmypy.json
 .pyre/
 
 # font files
-experimental/znikoslsvginot-font/
+# experimental/znikoslsvginot-font/
 
 # PyCharm IDE
 .idea/
