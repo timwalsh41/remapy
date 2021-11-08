@@ -146,6 +146,7 @@ class FileExplorer(object):
         # these will be updated by update_synchronizer_settings
         self.remarkable_root_password = ''
         self.remarkable_ip = ''
+        self.enable_auto_local_sync = False
 
         # a placeholder to store the id of the item we are editing
         self.edited_id = None
@@ -442,9 +443,15 @@ class FileExplorer(object):
                 open_original=False)
 
     def btn_local_sync_item(self):
-        thread = threading.Thread(target=self._local_sync_item)
-        thread.start()
+        # get selected item
+        selected_ids = self.tree.selection()
+        item = self.item_manager.get_item(selected_ids[0])
 
+        if item.type != model.document.TYPE_NOTEBOOK:
+            self.log_console('Only can sync notebooks')
+        else:
+            thread = threading.Thread(target=self._local_sync_item, args=(item,))
+            thread.start()
 
     def tree_double_click(self, event):
         selected_ids = self.tree.selection()
@@ -543,9 +550,12 @@ class FileExplorer(object):
 
 
     def sync_post_edit(self):
-        # run a local sync to Remarkable, also syncing the edited item to the cloud
-        thread = threading.Thread(target=self._local_sync_item)
-        thread.run()
+        if self.enable_auto_local_sync:
+            item = self.item_manager.get_item(self.edited_id)
+
+            # run a local sync to Remarkable, also syncing the edited item to the cloud
+            thread = threading.Thread(target=self._local_sync_item, args=(item,))
+            thread.run()
 
 
     def _local_sync(self, item):
@@ -566,9 +576,7 @@ class FileExplorer(object):
         print('Finished syncing')
 
 
-    def _local_sync_item(self):
-        item = self.item_manager.get_item(self.edited_id)
-
+    def _local_sync_item(self, item):
         # sync with server (this should update the local copy, including pdf, to the edits
         # that were just entered)
         self._sync_and_open_item(item, force=True, open_file=False,
@@ -585,6 +593,8 @@ class FileExplorer(object):
             self.log_console('Unable to sync to remarkable - check IP/password, and that Remarkable is on and connected to WiFi')
 
         syncro.disconnect()
+
+        print('\tLocal sync of {} complete'.format(item.metadata['VissibleName']))
 
 
     def _sync_items(self, items, force, open_file, open_original, open_oap):
@@ -626,7 +636,7 @@ class FileExplorer(object):
         for t in threads:
             t.join()
 
-        if not self.local_sync_in_progress:
+        if not self.local_sync_in_progress and self.enable_auto_local_sync:
             self.local_sync_in_progress = True
             self._local_sync(item=None)
 
@@ -902,6 +912,8 @@ class FileExplorer(object):
             editor.start_main_loop()
 
 
-    def update_synchronizer_settings(self, new_IP, new_password):
+    def update_synchronizer_settings(self, new_IP, new_password, enable_auto_local_sync):
         self.remarkable_ip = new_IP
         self.remarkable_root_password = new_password
+        self.enable_auto_local_sync = enable_auto_local_sync
+

@@ -130,8 +130,17 @@ class Settings(object):
         self.entry_remarkable_root_password = tk.Entry(root, textvariable=self.remarkable_root_password)
         self.entry_remarkable_root_password.grid(row=14, column=4, sticky="W")
 
+        label = tk.Label(root, text="Enable auto local sync:")
+        label.grid(row=15, column=2, sticky="W")
+
+        self.enable_auto_local_sync = tk.BooleanVar()
+        self.enable_auto_local_sync.set(cfg.get("remarkable_sync.enable_auto_sync", default=False))
+        self.enable_auto_sync_checkbox = tk.Checkbutton(root, text ='', var=self.enable_auto_local_sync,
+                                                     command=self.update_sync_settings)
+        self.enable_auto_sync_checkbox.grid(row=15, column=4, sticky="W")
+
         self.btn_save = tk.Button(root, text="Save settings", command=self.btn_save_click, width=17)
-        self.btn_save.grid(row=15, column=4, sticky="W")
+        self.btn_save.grid(row=16, column=4, sticky="W")
 
         # Subscribe to sign in event. Outer logic (i.e. main) can try to
         # sign in automatically...
@@ -184,18 +193,19 @@ class Settings(object):
         # save updated values to config
         remarkable_sync = {
             "ip": self.remarkable_ip_text.get(),
-            "root_password": self.remarkable_root_password.get()
+            "root_password": self.remarkable_root_password.get(),
+            "enable_auto_sync": self.enable_auto_local_sync.get()
         }
         cfg.save({"remarkable_sync": remarkable_sync})
 
         # update file explorer
         if self.sync_settings_change_callback is not None:
-            self.sync_settings_change_callback(self.remarkable_ip_text.get(), self.remarkable_root_password.get())
+            self.sync_settings_change_callback(self.remarkable_ip_text.get(), self.remarkable_root_password.get(), self.enable_auto_local_sync.get())
 
 
     def register_sync_setting_change_callback(self, fun):
         self.sync_settings_change_callback = fun
-        fun(self.remarkable_ip_text.get(), self.remarkable_root_password.get())
+        fun(self.remarkable_ip_text.get(), self.remarkable_root_password.get(), self.enable_auto_local_sync.get())
 
 
     def btn_save_click(self):
@@ -205,7 +215,8 @@ class Settings(object):
         }
         remarkable_sync = {
             "ip": self.remarkable_ip_text.get(),
-            "root_password": self.remarkable_root_password.get()
+            "root_password": self.remarkable_root_password.get(),
+            "enable_auto_sync": self.enable_auto_local_sync.get()
         }
         cfg.save({"general": general, "remarkable_sync": remarkable_sync})
 

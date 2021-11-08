@@ -553,7 +553,7 @@ class RemarkableEditor:
                             zf.writestr('{}/{}.rm'.format(self.id, page_index), file_obj.read())
                     else:
                         # standard file - just add directly to the zip
-                        with open(filepath, 'r') as file_obj:
+                        with open(filepath, 'rb') as file_obj:
                             zf.writestr(filename, file_obj.read())
 
         mf.seek(0)
