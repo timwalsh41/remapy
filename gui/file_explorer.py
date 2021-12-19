@@ -26,6 +26,7 @@ from model.item import Item
 import model.document
 from model.document import Document
 import utils.config
+import model.render as render
 from experimental.editor import RemarkableEditor
 from experimental.synchronizer import Synchronizer
 
@@ -113,6 +114,7 @@ class FileExplorer(object):
         self.context_menu.add_separator()
         self.context_menu.add_command(label='Paste', accelerator="Ctrl+V", command=self.btn_paste_async_click)
         self.context_menu.add_command(label='EXPERIMENTAL: Edit file', command=self.btn_test_modification)
+        self.context_menu.add_command(label='EXPERIMENTAL: Show metadata', command=self.btn_show_metadata)
 
         self.tree.bind("<Double-1>", self.tree_double_click)
 
@@ -577,6 +579,10 @@ class FileExplorer(object):
 
 
     def _local_sync_item(self, item):
+        if item.type != model.document.TYPE_NOTEBOOK:
+            print('Local sync is only for notebooks')
+            return
+
         # sync with server (this should update the local copy, including pdf, to the edits
         # that were just entered)
         self._sync_and_open_item(item, force=True, open_file=False,
@@ -593,6 +599,13 @@ class FileExplorer(object):
             self.log_console('Unable to sync to remarkable - check IP/password, and that Remarkable is on and connected to WiFi')
 
         syncro.disconnect()
+
+        render.notebook(
+            item.path,
+            item.id(),
+            item.path_annotated_pdf,
+            item.is_landscape(),
+            path_templates=utils.config.get("general.templates"))
 
         print('\tLocal sync of {} complete'.format(item.metadata['VissibleName']))
 
@@ -910,6 +923,16 @@ class FileExplorer(object):
             editor.create_window()
             editor.draw_remarkable_page()
             editor.start_main_loop()
+
+
+    def btn_show_metadata(self):
+        selected_ids = self.tree.selection()
+
+        id = selected_ids[0]
+        # self.log_console('Selected {}'.format(id))
+
+        item = self.item_manager.get_item(id)
+        print(item.metadata)
 
 
     def update_synchronizer_settings(self, new_IP, new_password, enable_auto_local_sync):

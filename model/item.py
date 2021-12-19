@@ -136,7 +136,6 @@ class Item(object):
         self._write_remapy_file()
         self._update_state_listener()
 
-
     def rename(self, new_name):
         if self.is_trash() or self.is_root():
             return 
@@ -147,7 +146,6 @@ class Item(object):
         self.rm_client.update_metadata(self.metadata)
         self._write_remapy_file()
         self._update_state_listener()
-
 
     def move(self, new_parent):
         if self.is_trash() or self.is_root():
@@ -161,15 +159,12 @@ class Item(object):
         self._write_remapy_file()
         self._update_state_listener()
 
-
     def add_state_listener(self, listener):
         self.state_listener.append(listener)
-
 
     def _update_state_listener(self):
         for listener in self.state_listener:
             listener(self)
-        
 
     def _write_remapy_file(self):
         if self.is_root():
@@ -183,10 +178,16 @@ class Item(object):
         with open(self.path_metadata_local, "w") as out:
             out.write(json.dumps(self.metadata, indent=4))
 
-
     def increment_version_number(self):
         self.metadata["Version"] += 1
         print('New item version is {}'.format(self.metadata["Version"]))
+
+        # write out the metadata with updated version to our local file
+        self._write_metadata()
+
+    def decrement_version_number(self):
+        self.metadata["Version"] -= 1
+        # print('New item version is {}'.format(self.metadata["Version"]))
 
         # write out the metadata with updated version to our local file
         self._write_metadata()

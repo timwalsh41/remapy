@@ -487,27 +487,38 @@ class RemarkableEditor:
                     # add our new text to the page file
                     self.add_strings_to_page(page_number, page_path)
 
-            # re-draw current page so that text we added becomes remarkable objects rather than tkinter
-            # labels
-            self.clear_canvas()
-
             # clear local list of text labels
             self.text_list = [[] for p in range(self.num_pages)]
-
-            # now redraw the page
-            self.draw_remarkable_page()
 
             # increment version number
             self.im.get_item(self.id).increment_version_number()
 
             # upload to server
             print('Upload to server')
-            self.upload()
+            if self.upload() == True:
+                # re-draw current page so that text we added becomes remarkable objects rather than tkinter
+                # labels
+                self.clear_canvas()
 
-            # trigger a local sync of the edited file in the file explorer
-            self.sync_fun()
+                # now redraw the page
+                self.draw_remarkable_page()
 
-            self.unsaved_changes = False
+                # trigger a local sync of the edited file in the file explorer
+                self.sync_fun()
+
+                self.unsaved_changes = False
+
+                print('Upload complete')
+            else:
+                # TODO: handle failed upload case, allow for user to close editor but track that there are
+                # local changes that haven't been uploaded to server. Probably the best way to do this is to add
+                # a field to the metadata. Would need to delete this field before uploading to server.
+
+                # Upload failed, alert user and leave unsaved_changes = True
+                # note that we've already cleared the text list, so when user presses "save" again, we will
+                # not rewrite the new text to our local remarkable file, but we will try to re-upload
+                print('Error saving file, please try again')
+                self.im.get_item(self.id).decrement_version_number()
 
 
     # build_zip_file will create a zip archive of the Remarkable notebook as a BytesIO object
@@ -588,9 +599,11 @@ class RemarkableEditor:
 
                 response = self.im.rm_client._request('PUT', BlobURL, data=mf)
                 retval = self.im.rm_client.update_metadata(item.metadata)
-                print(retval)
-                print(response.ok)
+                # print(retval)
+                # print(response.ok)
 
+                return response.ok
+        return False
 
     # exit will close the main editor window to end the session
     def exit(self):
@@ -635,6 +648,8 @@ if __name__ == '__main__':
     id = '0e6ceff0-3137-4dcc-8672-ee63c32621e1'
 
     file_path = '/home/tim/.remapy/data/{}/{}/'.format(id, id)
+
+    file_path = '/home/tim/Desktop/'
 
     rema = RemarkableEditor(id, file_path, page=0)
     rema.create_window()

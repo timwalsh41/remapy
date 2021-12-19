@@ -4,6 +4,8 @@ import json
 import re
 import enum
 import numpy as np
+import hashlib
+import copy
 
 from reportlab.lib import colors
 
@@ -34,6 +36,61 @@ def matrix_to_line(matrix, offset_x = 0, offset_y = 0, x_scale=1, y_scale=1):
         new_line.add_point(point)
 
     return new_line
+
+
+# merge two page objects - return a page object that
+# represents the combination of all layers & lines in
+# both pages
+def merge_pages(page_1, md5_1, page_2, md5_2):
+    # handle case that one or both page objects is empty
+    if len(page_1.get_layers()) == 0:
+        if len(page_2.get_layers()) == 0:
+            print('Error merging pages - neither page has any layers')
+        else:
+            return copy.deepcopy(page_2)
+    elif len(page_2.get_layers()) == 0:
+        return copy.deepcopy(page_1)
+
+    # start the merged page as a copy of page 1
+    # then we will loop over layers/lines in page 2 and copy in any for which we don't find a match
+    merged_page = copy.deepcopy(page_1)
+
+    # loop over the layers in page 2
+    for layer_idx,layer in enumerate(page_2.get_layers()):
+        if len(page_1.get_layers()) < (layer_idx + 1):
+            # copy current layer from page 2 directly into merged page
+            merged_page.add_layer(page_2.get_layers()[layer_idx])
+
+            # continue on to next layer
+            continue
+
+        # loop over lines in current layer of page 2
+        for line_idx,line in enumerate(layer.get_lines()):
+            # get hash of page 2 current line format & data
+            page2_line_format_md5 = md5_2[layer_idx][2*line_idx]
+            page2_line_data_md5 = md5_2[layer_idx][2*line_idx + 1]
+
+            # assume we don't have a match
+            line_match = False
+
+            # now loop through page 1 lines to check if a match exists
+            for md5_idx in range(int(len(md5_1[layer_idx])/2)):
+                page1_line_format_md5 = md5_1[layer_idx][2*md5_idx]
+                page1_line_data_md5 = md5_1[layer_idx][2*md5_idx + 1]
+
+                if page1_line_format_md5 == page2_line_format_md5 and page1_line_data_md5 == page2_line_data_md5:
+                    # we have a match, no need to add
+                    # print('Layer {} line {} ({}) match found ({})'.format(layer_idx, line_idx, page2_line_data_md5, md5_idx))
+                    line_match = True
+                    break
+
+            # check if we have a match if not then add this line from page 2 to the merged page
+            if not line_match:
+                # add line to merged page
+                # print('Adding line {} to merged page'.format(line_idx))
+                merged_page.get_layers()[layer_idx].add_line(page_2.get_layers()[layer_idx].get_lines()[line_idx])
+
+    return merged_page
 
 
 # pen types
@@ -209,10 +266,20 @@ class Page:
         return 0
 
 
+    def write_metadata_json_file(self, metadata_json_file_path):
+        metadata_dict = {'layers': []}
+        for layer_idx, _ in enumerate(self._layers):
+            metadata_dict['layers'].append({'name': 'Layer {}'.format(layer_idx + 1)})
+        metadata_json = json.dumps(metadata_dict, indent=4)
+        with open(metadata_json_file_path, 'w') as out_file:
+            out_file.write(metadata_json)
+
+
 class LineParser:
     def __init__(self, rm_file_path = None):
         self._rm_file_path = rm_file_path
         self._rm_file_binary_data = None
+        self.layers_metadata = None
 
 
     def set_file_path(self, rm_file_path):
@@ -231,11 +298,42 @@ class LineParser:
         with open(self._rm_file_path, 'rb') as f:
             self._rm_file_binary_data = f.read()
 
-
-    def parse_rm_data(self):
-        # extract metadate file path
+        # attempt to extract metadate file path
         metadata_file_path = self._rm_file_path[:-3] + '-metadata.json'
 
+        if os.path.exists(metadata_file_path):
+            with open(metadata_file_path, "r") as meta_file:
+                self.layers_metadata = json.loads(meta_file.read())["layers"]
+        else:
+            self.layers_metadata = None
+
+
+    # load in raw bytes/bytearray data and page metadata from zip file
+    def read_rm_data_from_zip(self, id, zip_file, page_idx):
+        with zip_file.open(name='{}/{}.rm'.format(id, page_idx), mode='r') as zip_data_file:
+            zip_data = zip_data_file.read()
+
+        if isinstance(zip_data, bytes) or isinstance(zip_data, bytearray):
+            self._rm_file_binary_data = zip_data
+
+        try:
+            with zip_file.open(name='{}/{}-metadata.json'.format(id, page_idx), mode='r') as page_metadata:
+                self.layers_metadata = json.loads(page_metadata.read())["layers"]
+        except:
+            self.layers_metadata = None
+
+
+    def load_rm_data_binary(self, rm_data):
+        if isinstance(rm_data, bytes) or isinstance(rm_data, bytearray):
+            self._rm_file_binary_data = rm_data
+
+
+    def load_layer_metadata(self, layer_metadata):
+        if isinstance(layer_metadata, dict):
+            self.layers_metadata = layer_metadata
+
+
+    def parse_rm_data(self, calculate_MD5 = False):
         if self._rm_file_binary_data is None:
             print('Error - must read in RM file first')
             return
@@ -267,12 +365,9 @@ class LineParser:
         # Load name of layers; if layer name starts with # we use this color
         # for this layer
         layer_colors = [None for _ in range(nlayers)]
-        if os.path.exists(metadata_file_path):
-            with open(metadata_file_path, "r") as meta_file:
-                layers = json.loads(meta_file.read())["layers"]
-
-            for l in range(len(layers)):
-                layer = layers[l]
+        if self.layers_metadata is not None:
+            for l in range(len(self.layers_metadata)):
+                layer = self.layers_metadata[l]
 
                 matches = re.search(r"#([^\s]+)", layer["name"], re.M | re.I)
                 if not matches:
@@ -287,27 +382,45 @@ class LineParser:
                 except:
                     pass
 
+        if calculate_MD5:
+            # create a list to hold line MD5 checksums by layer
+            MD5_list = []
+
         # parse each layer
         for layer in range(nlayers):
             this_layer = Layer()
 
+            if calculate_MD5:
+                # add an empty list to hold MD5 checksums for current layer
+                MD5_list.append([])
+
             # read out number of strokes in current layer
             fmt = '<I'
-            (this_layer._line_count,) = struct.unpack_from(fmt, self._rm_file_binary_data, offset)
+            (num_lines,) = struct.unpack_from(fmt, self._rm_file_binary_data, offset)
             offset += struct.calcsize(fmt)
 
-            # Iterate through the strokes in the layer (If there is any)
-            for stroke in range(this_layer._line_count):
+            # Iterate through the strokes in the layer (if there are any)
+            for stroke in range(num_lines):
                 if this_page._is_v3:
                     fmt = '<IIIfI'
+                    fmt_len = 20
                     pen_nr, color, i_unk, width, segments_count = struct.unpack_from(fmt, self._rm_file_binary_data, offset)
                     offset += struct.calcsize(fmt)
                 if this_page._is_v5:
                     fmt = '<IIIffI'
+                    fmt_len = 24
                     pen_nr, color, i_unk, width, unknown, segments_count = struct.unpack_from(fmt, self._rm_file_binary_data, offset)
                     offset += struct.calcsize(fmt)
 
-                last_width = 0
+                # add layer header to byte array for md5 calculation
+                if calculate_MD5:
+                    # add the hash of the format string of the current line
+                    MD5_list[-1].append(hashlib.md5(self._rm_file_binary_data[offset:offset + fmt_len]).hexdigest())
+
+                    # create an empty byte array to hold the data for the present line
+                    line_byte_array = bytearray()
+
+                # last_width = 0
 
                 this_line = Line(None, color, i_unk, width)
 
@@ -340,14 +453,27 @@ class LineParser:
                 for segment in range(segments_count):
                     fmt = '<ffffff'
                     x, y, speed, tilt, width, pressure = struct.unpack_from(fmt, self._rm_file_binary_data, offset)
+
+                    if calculate_MD5:
+                        # add data for current point to our byte array representing the current line
+                        line_byte_array.extend(self._rm_file_binary_data[offset:offset+24])
+
                     offset += struct.calcsize(fmt)
 
                     this_point = Point(x, y, speed, tilt, width, pressure)
-
                     this_line.add_point(this_point)
 
+                # finished processing points, add this line to current layer
                 this_layer.add_line(this_line)
+
+                if calculate_MD5:
+                    # append MD5 hash for current line
+                    MD5_list[-1].append(hashlib.md5(line_byte_array).hexdigest())
 
             this_page.add_layer(this_layer)
 
-        return this_page
+        if calculate_MD5:
+            return (this_page, MD5_list)
+        else:
+            return this_page
+

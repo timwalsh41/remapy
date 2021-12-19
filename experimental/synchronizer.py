@@ -3,6 +3,8 @@ import json
 import io
 import model.document
 import hashlib
+import os
+import experimental.lines as lines
 
 # Wareham
 # REMARKABLE_IP = '192.168.1.162'
@@ -148,13 +150,48 @@ class Synchronizer:
                 rm_pagefile_md5 = hashlib.md5(rm_pagefile_data).hexdigest()
 
                 if local_pagefile_md5 != rm_pagefile_md5:
-                    print('\tCopying to Remarkable: {}.{}.{}'.format(item.id(), idx, page))
+                    print('\tMerging with Remarkable: {}.{}.{}'.format(item.id(), idx, page))
+
+                    # create a LineParser for the remarkable version of the page
+                    rm_page_line_parser = lines.LineParser()
+                    rm_page_line_parser.load_rm_data_binary(rm_pagefile_data)
+
                     if not self.is_connected():
                         print('Lost SSH connection')
                         return
 
+                    # read in the layer metadata file from the remarkable
+                    try:
+                        rm_layer_metadata_file_path = RM_ROOT_FOLDER + item.id() + '/' + f'{page}-metadata.json'
+                        rm_layer_metadata_file = self.sftp_client.open(rm_layer_metadata_file_path, mode='r')
+                        rm_layers_metadata = json.loads(rm_layer_metadata_file.read())["layers"]
+                        rm_layer_metadata_file.close()
+
+                        rm_page_line_parser.load_layer_metadata(rm_layers_metadata)
+                    except:
+                        print('Unable to read layer metadata file {}.{}.{} from Remarkable'.format(item.id(), idx, page))
+
+                    rm_page, rm_md5 = rm_page_line_parser.parse_rm_data(calculate_MD5=True)
+
+                    # create a LineParser for the local page
+                    local_page_line_parser = lines.LineParser(local_pagefile_path)
+                    local_page_line_parser.read_rm_file()
+                    local_page, local_md5 = local_page_line_parser.parse_rm_data(calculate_MD5=True)
+
+                    # get merged page
+                    merged_page = lines.merge_pages(rm_page, rm_md5, local_page, local_md5)
+
+                    # save merged page locally
+                    local_metadata_json_file_path = os.path.join(item.path, item.id(), '{}-metadata.json'.format(idx))
+                    os.remove(local_pagefile_path)
+                    os.remove(local_metadata_json_file_path)
+                    merged_page.write_output_file(local_pagefile_path)
+                    merged_page.write_metadata_json_file(local_metadata_json_file_path)
+
+                    # now copy newly merged page over to remarkable
                     try:
                         self.sftp_client.put(localpath=local_pagefile_path, remotepath=rm_pagefile_path)
+                        self.sftp_client.put(localpath=local_metadata_json_file_path, remotepath=rm_layer_metadata_file_path)
                     except:
                         print('Unable to copy into remote file {}'.format(rm_pagefile_path))
                 # else:
@@ -179,7 +216,7 @@ class Synchronizer:
             metadata_file.close()
             rm_metadata_json = json.loads(data)
 
-            print('{} {}; RM version = {}; PC version = {}'.format(item.id(), item.metadata['VissibleName'], metadata_json['version'], item.metadata['Version']))
+            print('{} {}; RM version = {}; PC version = {}'.format(item.id(), item.metadata['VissibleName'], rm_metadata_json['version'], item.metadata['Version']))
 
             if item.metadata['Version'] > rm_metadata_json['version']:
                 # update version in metadata
