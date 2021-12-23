@@ -6,6 +6,7 @@ from zipfile import ZipFile
 from pathlib import Path
 import datetime
 from time import gmtime, strftime
+import time
 import json
 import experimental.lines as lines
 
@@ -235,19 +236,25 @@ class Document(Item):
             local_content_file = open(os.path.join(path, '{}.content'.format(self.id())), 'r')
             local_content_file_data = local_content_file.read()
             local_content_json = json.loads(local_content_file_data)
+            local_content_file.close()
 
             # create a copy of the page data folder
-            shutil.copytree(os.path.join(path, self.id()), os.path.join(path, 'page_data_backup'))
+            backup_page_file_path = os.path.join(path, 'page_data_backup')
+            if os.path.exists(backup_page_file_path):
+                os.remove(backup_page_file_path)
+            shutil.copytree(os.path.join(path, self.id()), backup_page_file_path)
 
-            # now remove unneeded files
+            # now remove unneeded files/folders
             os.remove(os.path.join(path, '{}.content'.format(self.id())))
             os.remove(os.path.join(path, '{}.pagedata'.format(self.id())))
             shutil.rmtree(os.path.join(path, self.id()))
             shutil.rmtree(os.path.join(path, '.remapy'))
 
             # create folder for page files
-            os.makedirs(os.path.join(path, self.id()))
-
+            page_file_path = os.path.join(path, self.id())
+            if os.path.exists(page_file_path):
+                os.remove(page_file_path)
+            os.makedirs(page_file_path)
         else:
             # no local content to merge, just extract zip file into folder
             with zipfile.ZipFile(self.path_zip, "r") as zip_ref:
@@ -263,6 +270,7 @@ class Document(Item):
             # get content file data from zip file
             remote_content_file = zip_ref.open(name='{}.content'.format(self.id()), mode='r')
             remote_content_file_data = remote_content_file.read()
+            remote_content_file.close()
             remote_content_json = json.loads(remote_content_file_data)
 
             # loop through page IDs in remote file
@@ -306,7 +314,10 @@ class Document(Item):
             zip_ref.extract('{}.content'.format(self.id()), path)
 
         # remove unneeded files
-        os.remove(self.path_zip)
+        try:
+            os.remove(self.path_zip)
+        except:
+            print('Cannot delete zip file')
         shutil.rmtree(os.path.join(path, 'page_data_backup'))
 
         # Update state
